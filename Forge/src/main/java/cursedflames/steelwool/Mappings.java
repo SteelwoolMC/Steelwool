@@ -2,12 +2,17 @@ package cursedflames.steelwool;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
+import net.fabricmc.tinyremapper.IMappingProvider;
+import net.fabricmc.tinyremapper.TinyUtils;
+import net.minecraftforge.fml.loading.FMLPaths;
 import oshi.util.tuples.Pair;
 
 import java.io.BufferedReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -22,7 +27,33 @@ public class Mappings {
 		}
 	}
 
-	public static void applyMojangClassNames() {
+	private static IMappingProvider mappings(Path file) {
+		return TinyUtils.createTinyMappingProvider(file, "intermediary", "tsrg");
+	}
+
+	public static IMappingProvider getMappings() {
+		// TODO check minecraft version of existing file, somehow - put the version in the filename maybe?
+		//      maybe have a mappings folder and have files for each MC version
+		var steelwoolFolder = FMLPaths.getOrCreateGameRelativePath(Path.of(Constants.MOD_ID), Constants.MOD_ID);
+		var mappingFile = steelwoolFolder.resolve("intermediary_to_tsrg.tiny");
+		if (mappingFile.toFile().exists()) {
+			try {
+				return mappings(mappingFile);
+			} catch(RuntimeException e) {
+				Constants.LOG.warn("Failed to load existing mappings file, regenerating it...");
+			}
+		}
+
+		applyMojangClassNames(mappingFile);
+
+		try {
+			return mappings(mappingFile);
+		} catch(RuntimeException e) {
+			throw new RuntimeException("Failed to generate and load mappings file");
+		}
+	}
+
+	private static void applyMojangClassNames(Path outputFile) {
 		try {
 			var url = new URL("https://launchermeta.mojang.com/mc/game/version_manifest.json");
 			JsonElement data = readJson(url);
@@ -60,10 +91,10 @@ public class Mappings {
 							return String.format("%s\t%s\t%s", parts[0], parts[1], mojangClassName);
 						})
 						.collect(Collectors.joining("\n"));
-				System.out.println("mappings = " + mappings.substring(0, 4000));
+				try(var writer = new FileWriter(outputFile.toFile(), false)) {
+					writer.write(mappings);
+				}
 			}
-			// TODO write the mappings somewhere
-
 		} catch (IOException e) {
 			e.printStackTrace();
 			throw new RuntimeException("Mappings failed");
@@ -77,7 +108,7 @@ public class Mappings {
 					// I think they indent using spaces, not tabs, but just in case
 					.filter(line -> !line.startsWith("#") && !line.startsWith(" ") && !line.startsWith("\t"))
 					.map(line -> {
-						var terms = line.strip().split(" +");
+						var terms = line.strip().replace(".", "/").split(" +");
 						var obfName = terms[2].substring(0, terms[2].length()-1);
 						var mojangName = terms[0];
 						return new Pair<>(obfName, mojangName);

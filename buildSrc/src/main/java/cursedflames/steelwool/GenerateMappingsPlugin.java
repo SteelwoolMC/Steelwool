@@ -40,7 +40,7 @@ public class GenerateMappingsPlugin implements Plugin<Project> {
 			generateMappingsTask.mcpconfigJarFile.set(project.getConfigurations().getByName("mcpconfig").getSingleFile());
 			generateMappingsTask.outputFile.set(project.getLayout().getBuildDirectory().file("intermediary_to_tsrg.tiny"));
 		});
-		project.getTasks().getByName("jar").dependsOn(task);
+		project.getTasks().getByName("processResources").dependsOn(task);
 	}
 
 	public static class GenerateMappingsTask extends DefaultTask {
@@ -184,7 +184,7 @@ public class GenerateMappingsPlugin implements Plugin<Project> {
 					var methodIntermediary = method.getName(INTERMEDIARY);
 					MethodDef tsrgMethod = null;
 					for (var otherTsrgMethod : tsrgMethods) {
-						if (otherTsrgMethod.getName(OFFICIAL).equals(methodOfficial)) {
+						if (otherTsrgMethod.getName(OFFICIAL).equals(methodOfficial) && otherTsrgMethod.getDescriptor(OFFICIAL).equals(method.getDescriptor(OFFICIAL))) {
 							tsrgMethod = otherTsrgMethod;
 							break;
 						}

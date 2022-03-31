@@ -1,5 +1,10 @@
 package cursedflames.steelwool;
 
+import net.fabricmc.tinyremapper.FileSystemHandler;
+import net.fabricmc.tinyremapper.IMappingProvider;
+import net.fabricmc.tinyremapper.OutputConsumerPath;
+import net.fabricmc.tinyremapper.TinyRemapper;
+import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.loading.FMLPaths;
 import net.minecraftforge.fml.loading.ModDirTransformerDiscoverer;
 import net.minecraftforge.fml.loading.StringUtils;
@@ -8,17 +13,21 @@ import net.minecraftforge.forgespi.locating.IModLocator;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
-import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -36,10 +45,10 @@ public class SteelwoolModLocator implements IModLocator {
 		return Constants.MOD_ID;
 	}
 
+	static record ModCandidate(Path path, FabricModData metadata) {}
+
 	@Override
 	public List<IModFile> scanMods() {
-		Mappings.applyMojangClassNames();
-
 		Constants.LOG.info("SteelWool scanning for mods...");
 		var excluded = ModDirTransformerDiscoverer.allExcluded();
 		for (var e : excluded) {
@@ -64,7 +73,7 @@ public class SteelwoolModLocator implements IModLocator {
 			mods = List.of();
 		}
 
-		var modCandidates = new ArrayList<>();
+		var modCandidates = new ArrayList<ModCandidate>();
 		for (var mod : mods) {
 			System.out.println("mod = " + mod);
 			var cand = getModCandidate(mod);
@@ -75,7 +84,117 @@ public class SteelwoolModLocator implements IModLocator {
 
 		Constants.LOG.info("Found {} fabric mod candidates", modCandidates.size());
 
+		var mappings = Mappings.getMappings();
+		var remapper = TinyRemapper.newRemapper().withMappings(mappings).build();
+
+		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Path.of(Constants.MOD_ID+"/mods"), Constants.MOD_ID+"/mods");
+
+		for (var candidate : modCandidates) {
+			var outputPath = modsOutputFolder.resolve(candidate.path.getFileName());
+			try (var outputConsumer = new OutputConsumerPath.Builder(outputPath).build()) {
+				// TODO use input tags for efficiency
+				remapper.readInputs(candidate.path);
+				remapper.apply(outputConsumer);
+				remapper.finish();
+			} catch (IOException e) {
+				throw new RuntimeException();
+			}
+			try {
+				URI originalJarUri = new URI("jar:"+candidate.path.toUri());
+				URI remappedJarUri = new URI("jar:"+outputPath.toUri());
+				try(var oldFs = FileSystemHandler.open(originalJarUri); var newFs = FileSystemHandler.open(remappedJarUri)) {
+					Files.walkFileTree(oldFs.getPath("/"), new SimpleFileVisitor<>() {
+						@Override
+						public FileVisitResult visitFile(Path oldFile, BasicFileAttributes attrs) throws IOException {
+							var newFile = newFs.getPath(oldFile.toString());
+							if (Files.exists(newFile)) {
+								return FileVisitResult.CONTINUE;
+							}
+							// TODO find refmap files from fabric json -> mixin configs -> refmaps, rather than using file names
+							// TODO do we need to change the "named:intermediary" key in the "data" element? afaik only the "mappings" element is used anyway?
+							if (oldFile.toString().endsWith("refmap.json")) {
+								// TODO remap more efficiently
+								var methodPattern = Pattern.compile("method_[0-9]+");
+								var fieldPattern = Pattern.compile("field_[0-9]+");
+								var classPattern = Pattern.compile("L[/\\w]+?class_[0-9]+;");
+
+								var maps = getMaps(mappings);
+
+								var data = Files.readString(oldFile);
+								while (true) {
+									var matcher = methodPattern.matcher(data);
+									if (!matcher.find()) break;
+									var start = matcher.start();
+									var end = matcher.end();
+									var value = matcher.group();
+									data = data.substring(0, start) + maps.methodMap.get(value) + data.substring(end);
+								}
+								while (true) {
+									var matcher = fieldPattern.matcher(data);
+									if (!matcher.find()) break;
+									var start = matcher.start();
+									var end = matcher.end();
+									var value = matcher.group();
+									data = data.substring(0, start) + maps.fieldMap.get(value) + data.substring(end);
+								}
+								while (true) {
+									var matcher = classPattern.matcher(data);
+									if (!matcher.find()) break;
+									var start = matcher.start();
+									var end = matcher.end();
+									var value = matcher.group();
+									data = data.substring(0, start) + maps.classMap.get(value) + data.substring(end);
+								}
+								Files.write(newFile, data.getBytes());
+								return FileVisitResult.CONTINUE;
+							}
+							Files.createDirectories(newFile.getParent());
+							Files.copy(oldFile, newFile);
+							return FileVisitResult.CONTINUE;
+						}
+					});
+				}
+			} catch (IOException | URISyntaxException e) {
+				e.printStackTrace();
+				throw new RuntimeException(e);
+			}
+		}
+
 		throw new UnsupportedOperationException();
+	}
+
+	private static record Maps(HashMap<String, String> classMap, HashMap<String, String> methodMap, HashMap<String, String> fieldMap) {}
+
+	private static Maps getMaps(IMappingProvider provider) {
+		var classMap = new HashMap<String, String>();
+		var methodMap = new HashMap<String, String>();
+		var fieldMap = new HashMap<String, String>();
+		IMappingProvider.MappingAcceptor acceptor = new IMappingProvider.MappingAcceptor() {
+			@Override
+			public void acceptClass(String srcName, String dstName) {
+				classMap.put("L"+srcName+";", "L"+dstName+";");
+			}
+
+			@Override
+			public void acceptMethod(IMappingProvider.Member method, String dstName) {
+				methodMap.put(method.name, dstName);
+			}
+
+			@Override
+			public void acceptMethodArg(IMappingProvider.Member method, int lvIndex, String dstName) {}
+
+			@Override
+			public void acceptMethodVar(IMappingProvider.Member method, int lvIndex, int startOpIdx, int asmIndex, String dstName) {}
+
+			@Override
+			public void acceptField(IMappingProvider.Member field, String dstName) {
+				fieldMap.put(field.name, dstName);
+			}
+		};
+
+		provider.load(acceptor);
+
+		return new Maps(classMap, methodMap, fieldMap);
 	}
 
 	// We use the same initial jar-checking logic as fabric loader, for consistency
@@ -117,11 +236,14 @@ public class SteelwoolModLocator implements IModLocator {
 			}
 
 			System.out.println("got fabric data!");
-			System.out.println(data.data.toString());
+//			System.out.println(data.data.toString());
+
+			if (data.environment != FabricModData.Side.BOTH && (data.environment == FabricModData.Side.CLIENT) != FMLEnvironment.dist.isClient()) {
+				// We're on the wrong side for this mod; don't try to load it
+				return null;
+			}
 
 			return new ModCandidate(path, data);
-
-			// FIXME check which side the fabric mod should load on; discard any that are on wrong side
 
 			// TODO nested jar handling - see https://github.com/FabricMC/fabric-loader/blob/ccacc836e96887c534e26731eba6bd04bc358a11/src/main/java/net/fabricmc/loader/impl/discovery/ModDiscoverer.java#L283-L345
 		} catch (IOException e) {
@@ -129,10 +251,6 @@ public class SteelwoolModLocator implements IModLocator {
 		}
 
 		return null; //TODO
-	}
-
-	static record ModCandidate(Path path, FabricModData metadata) {
-
 	}
 
 	@Override
