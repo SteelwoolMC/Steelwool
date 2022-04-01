@@ -9,10 +9,9 @@ import net.fabricmc.tinyremapper.OutputConsumerPath;
 import net.fabricmc.tinyremapper.TinyRemapper;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.loading.FMLPaths;
-import net.minecraftforge.fml.loading.LogMarkers;
 import net.minecraftforge.fml.loading.ModDirTransformerDiscoverer;
 import net.minecraftforge.fml.loading.StringUtils;
-import net.minecraftforge.fml.loading.moddiscovery.AbstractModLocator;
+import net.minecraftforge.fml.loading.moddiscovery.AbstractJarFileLocator;
 import net.minecraftforge.forgespi.locating.IModFile;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
@@ -40,7 +39,7 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-public class SteelwoolModLocator/* implements IModLocator*/ extends AbstractModLocator {
+public class SteelwoolModLocator extends AbstractJarFileLocator {
 	private final Path modFolder;
 
 	public SteelwoolModLocator() {
@@ -56,7 +55,7 @@ public class SteelwoolModLocator/* implements IModLocator*/ extends AbstractModL
 	static record ModCandidate(Path path, FabricModData metadata) {}
 
 	@Override
-	public List<IModFile> scanMods() {
+	public Stream<Path> scanCandidates() {
 		Constants.LOG.info("SteelWool scanning for mods...");
 		var excluded = ModDirTransformerDiscoverer.allExcluded();
 		for (var e : excluded) {
@@ -171,21 +170,30 @@ public class SteelwoolModLocator/* implements IModLocator*/ extends AbstractModL
 						if (Files.exists(manifestPath)) {
 							manifestLines = Files.readAllLines(manifestPath);
 						} else {
+							// FIXME we need to add some default manifest data here
 							manifestLines = new ArrayList<>();
+						}
+						if (/*manifestLines.size() == 0 || */!manifestLines.get(manifestLines.size()-1).isEmpty()) {
+							manifestLines.add("");
 						}
 						// Remove any existing MixinConfigs lines - TODO maybe we should just keep them?
 						for (int i = 0; i < manifestLines.size(); i++) {
 							var line = manifestLines.get(i);
-							if (line.length() == 0 || line.startsWith("MixinConfigs: ")/* || line.startsWith("FMLModType: ")*/) {
+							if (line.startsWith("MixinConfigs: ")/* || line.startsWith("FMLModType: ")*/) {
 								manifestLines.remove(i);
 								i--;
 							}
+							if (line.length() == 0) {
+								// TODO handle sided mixins
+								// FIXME will this break for excessively long lines?
+								manifestLines.add(i, "MixinConfigs: " + candidate.metadata.mixins.stream()
+										.map(FabricModData.MixinConfig::config).collect(Collectors.joining(",")));
+//								manifestLines.add(i, "FMLModType: GAMELIBRARY");
+								break;
+							}
 						}
 
-						// TODO handle sided mixins
-						manifestLines.add("MixinConfigs: " + candidate.metadata.mixins.stream()
-								.map(FabricModData.MixinConfig::config).collect(Collectors.joining(",")));
-//						manifestLines.add("FMLModType: GAMELIBRARY");
+
 						Files.writeString(manifestPath, String.join("\n", manifestLines));
 					}
 					var dummyModClassPackage = "cursedflames/steelwool/" + candidate.metadata.id;
@@ -200,22 +208,7 @@ public class SteelwoolModLocator/* implements IModLocator*/ extends AbstractModL
 			}
 		}
 
-		var modFiles = new ArrayList<IModFile>();
-
-		for (var path : outputJars) {
-//			var secureJar = SecureJar.from(path);
-//			var modFile = new ModFile(secureJar, this, ModFileParser::modsTomlParser);
-//			System.out.println("modFile = " + modFile.getType().toString());
-
-			var modFile = super.createMod(path);
-			if (modFile.isPresent()) {
-				modFiles.add(modFile.get());
-			} else {
-				Constants.LOG.warn("Failed to load modfile for path " + path.toString());
-			}
-		}
-
-		return modFiles;
+		return outputJars.stream();
 	}
 
 	private static record Maps(HashMap<String, String> classMap, HashMap<String, String> methodMap, HashMap<String, String> fieldMap) {}
