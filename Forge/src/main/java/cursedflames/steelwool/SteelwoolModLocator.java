@@ -1,5 +1,8 @@
 package cursedflames.steelwool;
 
+import com.electronwill.nightconfig.core.Config;
+import com.electronwill.nightconfig.core.io.ConfigWriter;
+import com.electronwill.nightconfig.toml.TomlWriter;
 import net.fabricmc.tinyremapper.FileSystemHandler;
 import net.fabricmc.tinyremapper.IMappingProvider;
 import net.fabricmc.tinyremapper.OutputConsumerPath;
@@ -13,6 +16,7 @@ import net.minecraftforge.forgespi.locating.IModLocator;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.io.StringReader;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.FileVisitResult;
@@ -153,6 +157,30 @@ public class SteelwoolModLocator implements IModLocator {
 							return FileVisitResult.CONTINUE;
 						}
 					});
+					Files.write(newFs.getPath("/META-INF/mods.toml"), new TomlWriter().writeToString(generateForgeMetadata(candidate.metadata)).getBytes());
+					if (candidate.metadata.mixins.size() > 0) {
+						List<String> manifestLines;
+						// We already copied all files anyway, so just modify the one in the new jar directly
+						var manifestPath = newFs.getPath("/META-INF/MANIFEST.MF");
+						if (Files.exists(manifestPath)) {
+							manifestLines = Files.readAllLines(manifestPath);
+						} else {
+							manifestLines = new ArrayList<>();
+						}
+						// Remove any existing MixinConfigs lines - TODO maybe we should just keep them?
+						for (int i = 0; i < manifestLines.size(); i++) {
+							var line = manifestLines.get(i);
+							if (line.startsWith("MixinConfigs: ")) {
+								manifestLines.remove(i);
+								i--;
+							}
+						}
+
+						// TODO handle sided mixins
+						manifestLines.add("MixinConfigs: " + candidate.metadata.mixins.stream()
+								.map(FabricModData.MixinConfig::config).collect(Collectors.joining(",")));
+						Files.writeString(manifestPath, String.join("\n", manifestLines));
+					}
 				}
 			} catch (IOException | URISyntaxException e) {
 				e.printStackTrace();
@@ -253,9 +281,33 @@ public class SteelwoolModLocator implements IModLocator {
 		return null; //TODO
 	}
 
+	private static Config generateForgeMetadata(FabricModData fabricData) {
+		// TODO do we care about side effects from always setting this and not resetting it afterwards?
+		// why is this a global property anyway? seems kinda janky
+		Config.setInsertionOrderPreserved(true);
+
+		var config = Config.inMemory();
+		// TODO do we need a separate language loader?
+		// TODO how do we handle non-java fabric mods?
+		config.set("modLoader", "javafml");
+		// TODO don't hardcode this
+		config.set("loaderVersion", "[40,)");
+		// FIXME get actual license information before release
+		config.set("license", "Unknown");
+
+		var modEntry = Config.inMemory();
+		modEntry.set("modId", fabricData.id);
+		modEntry.set("version", fabricData.version);
+		modEntry.set("displayName", fabricData.name);
+
+		config.set("mods", List.of(modEntry));
+
+		return config;
+	}
+
 	@Override
 	public void scanFile(IModFile modFile, Consumer<Path> pathConsumer) {
-
+		// TODO what are we supposed to do here?
 	}
 
 	@Override
