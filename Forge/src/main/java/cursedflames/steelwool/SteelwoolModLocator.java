@@ -1,22 +1,24 @@
 package cursedflames.steelwool;
 
 import com.electronwill.nightconfig.core.Config;
-import com.electronwill.nightconfig.core.io.ConfigWriter;
 import com.electronwill.nightconfig.toml.TomlWriter;
+import cpw.mods.jarhandling.SecureJar;
 import net.fabricmc.tinyremapper.FileSystemHandler;
 import net.fabricmc.tinyremapper.IMappingProvider;
 import net.fabricmc.tinyremapper.OutputConsumerPath;
 import net.fabricmc.tinyremapper.TinyRemapper;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.loading.FMLPaths;
+import net.minecraftforge.fml.loading.LogMarkers;
 import net.minecraftforge.fml.loading.ModDirTransformerDiscoverer;
 import net.minecraftforge.fml.loading.StringUtils;
+import net.minecraftforge.fml.loading.moddiscovery.AbstractModLocator;
 import net.minecraftforge.forgespi.locating.IModFile;
-import net.minecraftforge.forgespi.locating.IModLocator;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
-import java.io.StringReader;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.FileVisitResult;
@@ -31,12 +33,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-public class SteelwoolModLocator implements IModLocator {
+public class SteelwoolModLocator/* implements IModLocator*/ extends AbstractModLocator {
 	private final Path modFolder;
 
 	public SteelwoolModLocator() {
@@ -92,6 +96,8 @@ public class SteelwoolModLocator implements IModLocator {
 		var remapper = TinyRemapper.newRemapper().withMappings(mappings).build();
 
 		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Path.of(Constants.MOD_ID+"/mods"), Constants.MOD_ID+"/mods");
+
+		var outputJars = new ArrayList<Path>();
 
 		for (var candidate : modCandidates) {
 			var outputPath = modsOutputFolder.resolve(candidate.path.getFileName());
@@ -170,7 +176,7 @@ public class SteelwoolModLocator implements IModLocator {
 						// Remove any existing MixinConfigs lines - TODO maybe we should just keep them?
 						for (int i = 0; i < manifestLines.size(); i++) {
 							var line = manifestLines.get(i);
-							if (line.startsWith("MixinConfigs: ")) {
+							if (line.length() == 0 || line.startsWith("MixinConfigs: ")/* || line.startsWith("FMLModType: ")*/) {
 								manifestLines.remove(i);
 								i--;
 							}
@@ -179,16 +185,37 @@ public class SteelwoolModLocator implements IModLocator {
 						// TODO handle sided mixins
 						manifestLines.add("MixinConfigs: " + candidate.metadata.mixins.stream()
 								.map(FabricModData.MixinConfig::config).collect(Collectors.joining(",")));
+//						manifestLines.add("FMLModType: GAMELIBRARY");
 						Files.writeString(manifestPath, String.join("\n", manifestLines));
 					}
+					var dummyModClassPackage = "cursedflames/steelwool/" + candidate.metadata.id;
+					var dummyModClassPath = newFs.getPath(dummyModClassPackage + "/Mod.class");
+					Files.createDirectories(dummyModClassPath.getParent());
+					Files.write(dummyModClassPath, generateDummyModClass(dummyModClassPackage + "/Mod", candidate.metadata.id));
 				}
+				outputJars.add(outputPath);
 			} catch (IOException | URISyntaxException e) {
 				e.printStackTrace();
 				throw new RuntimeException(e);
 			}
 		}
 
-		throw new UnsupportedOperationException();
+		var modFiles = new ArrayList<IModFile>();
+
+		for (var path : outputJars) {
+//			var secureJar = SecureJar.from(path);
+//			var modFile = new ModFile(secureJar, this, ModFileParser::modsTomlParser);
+//			System.out.println("modFile = " + modFile.getType().toString());
+
+			var modFile = super.createMod(path);
+			if (modFile.isPresent()) {
+				modFiles.add(modFile.get());
+			} else {
+				Constants.LOG.warn("Failed to load modfile for path " + path.toString());
+			}
+		}
+
+		return modFiles;
 	}
 
 	private static record Maps(HashMap<String, String> classMap, HashMap<String, String> methodMap, HashMap<String, String> fieldMap) {}
@@ -305,9 +332,32 @@ public class SteelwoolModLocator implements IModLocator {
 		return config;
 	}
 
+	private static byte[] generateDummyModClass(String className, String modid) {
+		var cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null);
+		// Add mod annotation
+		var annotation = cw.visitAnnotation("Lnet/minecraftforge/fml/common/Mod;", true);
+		annotation.visit("value", modid);
+
+		// Define default no-args constructor
+		var constructor = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		constructor.visitCode();
+		constructor.visitVarInsn(Opcodes.ALOAD, 0); // Load `this` onto stack
+		constructor.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false); // Call super constructor
+		constructor.visitInsn(Opcodes.RETURN);
+		constructor.visitMaxs(1, 1);
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
 	@Override
 	public void scanFile(IModFile modFile, Consumer<Path> pathConsumer) {
-		// TODO what are we supposed to do here?
+		final Function<Path, SecureJar.Status> status = p->modFile.getSecureJar().verifyPath(p);
+		try (Stream<Path> files = Files.find(modFile.getSecureJar().getRootPath(), Integer.MAX_VALUE, (p, a) -> p.getNameCount() > 0 && p.getFileName().toString().endsWith(".class"))) {
+			modFile.setSecurityStatus(files.peek(pathConsumer).map(status).reduce((s1, s2)-> SecureJar.Status.values()[Math.min(s1.ordinal(), s2.ordinal())]).orElse(SecureJar.Status.INVALID));
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
 	@Override
