@@ -92,22 +92,38 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 		Constants.LOG.info("Found {} fabric mod candidates", modCandidates.size());
 
 		var mappings = Mappings.getMappings();
-		var remapper = TinyRemapper.newRemapper().withMappings(mappings).build();
+		var remapper = TinyRemapper.newRemapper()
+				.keepInputData(true)
+				.withMappings(mappings)
+//				.resolveMissing(true) // what does this one even do?
+				.build();
 
 		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Path.of(Constants.MOD_ID+"/mods"), Constants.MOD_ID+"/mods");
+
+		// Delete all existing mod files
+		// FIXME only do this for dev versions; we want caching for release
+		try {
+			Files.walk(modsOutputFolder).forEach(path -> {try {Files.deleteIfExists(path);} catch (IOException ignored) {}});
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 
 		var outputJars = new ArrayList<Path>();
 
 		for (var candidate : modCandidates) {
 			var outputPath = modsOutputFolder.resolve(candidate.path.getFileName());
 			try (var outputConsumer = new OutputConsumerPath.Builder(outputPath).build()) {
-				// TODO use input tags for efficiency
-				remapper.readInputs(candidate.path);
-				remapper.apply(outputConsumer);
-				remapper.finish();
+				var tag = remapper.createInputTag();
+				remapper.readInputs(tag, candidate.path);
+				remapper.apply(outputConsumer, tag);
 			} catch (IOException e) {
 				throw new RuntimeException();
 			}
+		}
+		remapper.finish();
+
+		for (var candidate : modCandidates) {
+			var outputPath = modsOutputFolder.resolve(candidate.path.getFileName());
 			try {
 				URI originalJarUri = new URI("jar:"+candidate.path.toUri());
 				URI remappedJarUri = new URI("jar:"+outputPath.toUri());
@@ -125,7 +141,7 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 								// TODO remap more efficiently
 								var methodPattern = Pattern.compile("method_[0-9]+");
 								var fieldPattern = Pattern.compile("field_[0-9]+");
-								var classPattern = Pattern.compile("L[/\\w]+?class_[0-9]+;");
+								var classPattern = Pattern.compile("L[$/\\w]+?class_[0-9]+;");
 
 								var maps = getMaps(mappings);
 
