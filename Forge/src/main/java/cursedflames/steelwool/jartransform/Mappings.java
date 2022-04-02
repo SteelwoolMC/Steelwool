@@ -1,7 +1,8 @@
-package cursedflames.steelwool;
+package cursedflames.steelwool.jartransform;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
+import cursedflames.steelwool.Constants;
 import net.fabricmc.tinyremapper.IMappingProvider;
 import net.fabricmc.tinyremapper.TinyUtils;
 import net.minecraftforge.fml.loading.FMLPaths;
