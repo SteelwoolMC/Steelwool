@@ -6,12 +6,12 @@ import cursedflames.steelwool.Constants;
 import cursedflames.steelwool.jartransform.mappings.Mappings;
 import cursedflames.steelwool.modloading.FabricModData;
 import cursedflames.steelwool.modloading.ModCandidate;
-import net.fabricmc.tinyremapper.IMappingProvider;
 import net.minecraftforge.fml.loading.FMLPaths;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.commons.ClassRemapper;
+import org.objectweb.asm.commons.Remapper;
 
 import java.io.IOException;
 import java.net.URI;
@@ -23,7 +23,6 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -33,11 +32,6 @@ public class FabricToForgeConverter {
 	// TODO multithreading for jar conversion? I'm not sure how slow it'll end up being once we can actually handle large/many mods
 	public static List<Path> getConvertedJarPaths(List<ModCandidate> modCandidates) {
 		var mappings = Mappings.getSimpleMappingData();
-//		var remapper = TinyRemapper.newRemapper()
-//				.keepInputData(true)
-//				.withMappings(mappings)
-////				.resolveMissing(true) // what does this one even do?
-//				.build();
 		var remapper = new Mappings.SteelwoolRemapper(mappings);
 
 		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Path.of("steelwool/mods"), Constants.MOD_ID+"/mods");
@@ -58,68 +52,10 @@ public class FabricToForgeConverter {
 
 		var outputJars = new ArrayList<Path>();
 
-//		for (var candidate : modCandidates) {
-//			var outputPath = modsOutputFolder.resolve(candidate.path().getFileName());
-//			try (var outputConsumer = new OutputConsumerPath.Builder(outputPath).build()) {
-//				var tag = remapper.createInputTag();
-//				remapper.readInputs(tag, candidate.path());
-//				remapper.apply(outputConsumer, tag);
-//			} catch (IOException e) {
-//				throw new RuntimeException();
-//			}
-//		}
-//		remapper.finish();
-
 		for (var candidate : modCandidates) {
 			var outputPath = modsOutputFolder.resolve(candidate.path().getFileName());
 			try {
-				URI originalJarUri = new URI("jar:"+candidate.path().toUri());
-				URI remappedJarUri = new URI("jar:"+outputPath.toUri());
-				try(var oldFs = FileSystems.newFileSystem(originalJarUri, Map.of()); var newFs = FileSystems.newFileSystem(remappedJarUri, Map.of("create", "true"))) {
-					Files.walkFileTree(oldFs.getPath("/"), new SimpleFileVisitor<>() {
-						@Override
-						public FileVisitResult visitFile(Path oldFile, BasicFileAttributes attrs) throws IOException {
-							var fileString = oldFile.toString();
-							var newFile = newFs.getPath(fileString);
-//							if (Files.exists(newFile)) {
-//								return FileVisitResult.CONTINUE;
-//							}
-
-							Files.createDirectories(newFile.getParent());
-
-							if (fileString.endsWith(".class")) {
-								var classReader = new ClassReader(Files.readAllBytes(oldFile));
-								var classWriter = new ClassWriter(classReader, 0);
-								var classRemapper = new ClassRemapper(classWriter, remapper);
-
-								classReader.accept(classRemapper, 0);
-
-								byte[] data = classWriter.toByteArray();
-								Files.write(newFile, data);
-
-								return FileVisitResult.CONTINUE;
-							}
-							// TODO find refmap files from fabric json -> mixin configs -> refmaps, rather than using file names
-							// TODO do we need to change the "named:intermediary" key in the "data" element? afaik only the "mappings" element is used anyway?
-							if (fileString.endsWith("refmap.json")) {
-								remapRefmap(mappings, oldFile, newFile);
-								return FileVisitResult.CONTINUE;
-							}
-							Files.copy(oldFile, newFile);
-							return FileVisitResult.CONTINUE;
-						}
-					});
-					Files.write(newFs.getPath("/META-INF/mods.toml"), new TomlWriter().writeToString(generateForgeMetadata(candidate.metadata())).getBytes());
-
-					// maybe update the manifest while walking all files, instead of here? eh, probably better to do it here in case the file didn't exist in the old jar
-					var manifestPath = newFs.getPath("/META-INF/MANIFEST.MF");
-					updateManifest(manifestPath, candidate);
-
-					var dummyModClassPackage = "cursedflames/steelwool/" + candidate.metadata().id;
-					var dummyModClassPath = newFs.getPath(dummyModClassPackage + "/Mod.class");
-					Files.createDirectories(dummyModClassPath.getParent());
-					Files.write(dummyModClassPath, generateDummyModClass(dummyModClassPackage + "/Mod", candidate.metadata().id));
-				}
+				transformJar(candidate.path(), outputPath, mappings, remapper, candidate);
 				outputJars.add(outputPath);
 			} catch (IOException | URISyntaxException e) {
 				e.printStackTrace();
@@ -129,38 +65,51 @@ public class FabricToForgeConverter {
 		return outputJars;
 	}
 
-	private static record Maps(HashMap<String, String> classMap, HashMap<String, String> methodMap, HashMap<String, String> fieldMap) {}
+	private static void transformJar(Path inputPath, Path outputPath, Mappings.SimpleMappingData mappings, Remapper remapper, ModCandidate candidate) throws URISyntaxException, IOException {
+		URI originalJarUri = new URI("jar:"+inputPath.toUri());
+		URI remappedJarUri = new URI("jar:"+outputPath.toUri());
+		try(var oldFs = FileSystems.newFileSystem(originalJarUri, Map.of()); var newFs = FileSystems.newFileSystem(remappedJarUri, Map.of("create", "true"))) {
+			Files.walkFileTree(oldFs.getPath("/"), new SimpleFileVisitor<>() {
+				@Override
+				public FileVisitResult visitFile(Path oldFile, BasicFileAttributes attrs) throws IOException {
+					var fileString = oldFile.toString();
+					var newFile = newFs.getPath(fileString);
 
-	private static Maps getMaps(IMappingProvider provider) {
-		var classMap = new HashMap<String, String>();
-		var methodMap = new HashMap<String, String>();
-		var fieldMap = new HashMap<String, String>();
-		IMappingProvider.MappingAcceptor acceptor = new IMappingProvider.MappingAcceptor() {
-			@Override
-			public void acceptClass(String srcName, String dstName) {
-				classMap.put("L"+srcName+";", "L"+dstName+";");
-			}
+					Files.createDirectories(newFile.getParent());
 
-			@Override
-			public void acceptMethod(IMappingProvider.Member method, String dstName) {
-				methodMap.put(method.name, dstName);
-			}
+					if (fileString.endsWith(".class")) {
+						var classReader = new ClassReader(Files.readAllBytes(oldFile));
+						var classWriter = new ClassWriter(classReader, 0);
+						var classRemapper = new ClassRemapper(classWriter, remapper);
 
-			@Override
-			public void acceptMethodArg(IMappingProvider.Member method, int lvIndex, String dstName) {}
+						classReader.accept(classRemapper, 0);
 
-			@Override
-			public void acceptMethodVar(IMappingProvider.Member method, int lvIndex, int startOpIdx, int asmIndex, String dstName) {}
+						byte[] data = classWriter.toByteArray();
+						Files.write(newFile, data);
 
-			@Override
-			public void acceptField(IMappingProvider.Member field, String dstName) {
-				fieldMap.put(field.name, dstName);
-			}
-		};
+						return FileVisitResult.CONTINUE;
+					}
+					// TODO find refmap files from fabric json -> mixin configs -> refmaps, rather than using file names
+					// TODO do we need to change the "named:intermediary" key in the "data" element? afaik only the "mappings" element is used anyway?
+					if (fileString.endsWith("refmap.json")) {
+						remapRefmap(mappings, oldFile, newFile);
+						return FileVisitResult.CONTINUE;
+					}
+					Files.copy(oldFile, newFile);
+					return FileVisitResult.CONTINUE;
+				}
+			});
+			Files.write(newFs.getPath("/META-INF/mods.toml"), new TomlWriter().writeToString(generateForgeMetadata(candidate.metadata())).getBytes());
 
-		provider.load(acceptor);
+			// maybe update the manifest while walking all files, instead of here? eh, probably better to do it here in case the file didn't exist in the old jar
+			var manifestPath = newFs.getPath("/META-INF/MANIFEST.MF");
+			updateManifest(manifestPath, candidate);
 
-		return new Maps(classMap, methodMap, fieldMap);
+			var dummyModClassPackage = "cursedflames/steelwool/" + candidate.metadata().id;
+			var dummyModClassPath = newFs.getPath(dummyModClassPackage + "/Mod.class");
+			Files.createDirectories(dummyModClassPath.getParent());
+			Files.write(dummyModClassPath, generateDummyModClass(dummyModClassPackage + "/Mod", candidate.metadata().id));
+		}
 	}
 
 	private static Config generateForgeMetadata(FabricModData fabricData) {

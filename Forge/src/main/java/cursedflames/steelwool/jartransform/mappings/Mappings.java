@@ -1,10 +1,8 @@
 package cursedflames.steelwool.jartransform.mappings;
 
 import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
 import cursedflames.steelwool.Constants;
-import net.fabricmc.tinyremapper.IMappingProvider;
-import net.fabricmc.tinyremapper.TinyUtils;
+import cursedflames.steelwool.Utils;
 import net.minecraftforge.fml.loading.FMLPaths;
 import org.objectweb.asm.commons.Remapper;
 import oshi.util.tuples.Pair;
@@ -26,16 +24,6 @@ public class Mappings {
 
 	public static record SimpleMappingData(HashMap<String, String> classes, HashMap<String, String> methods, HashMap<String, String> fields) {}
 
-	private static JsonElement readJson(URL url) throws IOException {
-		try (var stream = url.openStream()) {
-			return JsonParser.parseReader(new BufferedReader(new InputStreamReader(stream)));
-		}
-	}
-
-	private static IMappingProvider mappings(Path file) {
-		return TinyUtils.createTinyMappingProvider(file, "intermediary", "tsrg");
-	}
-
 	private static SimpleMappingData simpleMappings(Path file) throws IOException {
 		var classes = new HashMap<String, String>();
 		var methods = new HashMap<String, String>();
@@ -56,28 +44,6 @@ public class Mappings {
 		}
 
 		return new SimpleMappingData(classes, methods, fields);
-	}
-
-	public static IMappingProvider getMappings() {
-		// TODO check minecraft version of existing file, somehow - put the version in the filename maybe?
-		//      maybe have a mappings folder and have files for each MC version
-		var steelwoolFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT, Constants.MOD_CACHE_ROOT.toString());
-		var mappingFile = steelwoolFolder.resolve("intermediary_to_tsrg.tiny");
-		if (mappingFile.toFile().exists()) {
-			try {
-				return mappings(mappingFile);
-			} catch(RuntimeException e) {
-				Constants.LOG.warn("Failed to load existing mappings file, regenerating it...");
-			}
-		}
-
-		applyMojangClassNames(mappingFile);
-
-		try {
-			return mappings(mappingFile);
-		} catch(RuntimeException e) {
-			throw new RuntimeException("Failed to generate and load mappings file");
-		}
 	}
 
 	public static SimpleMappingData getSimpleMappingData() {
@@ -105,7 +71,7 @@ public class Mappings {
 	private static void applyMojangClassNames(Path outputFile) {
 		try {
 			var url = new URL("https://launchermeta.mojang.com/mc/game/version_manifest.json");
-			JsonElement data = readJson(url);
+			JsonElement data = Utils.readJson(url);
 			var versions = data.getAsJsonObject().getAsJsonArray("versions");
 
 			URL versionDataUrl = null;
@@ -117,7 +83,7 @@ public class Mappings {
 				}
 			}
 
-			JsonElement versionData = readJson(versionDataUrl);
+			JsonElement versionData = Utils.readJson(versionDataUrl);
 
 			var downloads = versionData.getAsJsonObject().getAsJsonObject("downloads");
 			var clientMappingsUrl = new URL(downloads.getAsJsonObject("client_mappings").getAsJsonPrimitive("url").getAsString());

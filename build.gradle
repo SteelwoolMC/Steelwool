@@ -20,25 +20,26 @@ subprojects {
     java.withJavadocJar()
         
     jar {
-		archiveClassifier = 'slim'
-        manifest {
-            attributes([
-                'Specification-Title'     : mod_name,
-                'Specification-Vendor'    : mod_author,
-                'Specification-Version'   : project.jar.archiveVersion,
-                'Implementation-Title'    : project.name,
-                'Implementation-Version'  : project.jar.archiveVersion,
-                'Implementation-Vendor'   : mod_author,
-                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
-                'Timestampe'              : System.currentTimeMillis(),
-                'Built-On-Java'           : "${System.getProperty('java.vm.version')} (${System.getProperty('java.vm.vendor')})",
-                'Build-On-Minecraft'      : minecraft_version
-            ])
-        }
+//		archiveClassifier = 'slim'
+		// TODO do we actually want any of these attributes?
+
+//        manifest {
+//            attributes([
+//                'Specification-Title'     : mod_name,
+//                'Specification-Vendor'    : mod_author,
+//                'Specification-Version'   : project.jar.archiveVersion,
+//                'Implementation-Title'    : project.name,
+//                'Implementation-Version'  : project.jar.archiveVersion,
+//                'Implementation-Vendor'   : mod_author,
+//                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+//                'Timestampe'              : System.currentTimeMillis(),
+//                'Built-On-Java'           : "${System.getProperty('java.vm.version')} (${System.getProperty('java.vm.vendor')})",
+//                'Build-On-Minecraft'      : minecraft_version
+//            ])
+//        }
     }
     
     repositories {
-
         mavenCentral()
 
         maven {
@@ -54,7 +55,6 @@ subprojects {
     
 
     tasks.withType(JavaCompile).configureEach {
-    
         it.options.encoding = 'UTF-8'
         it.options.release = 17
     }
@@ -63,7 +63,6 @@ subprojects {
     // metadata includes mapped dependencies which are not reasonably consumable by
     // other mod developers.
     tasks.withType(GenerateModuleMetadata) {
-
         enabled = false
     }
 }
