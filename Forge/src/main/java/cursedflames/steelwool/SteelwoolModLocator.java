@@ -24,7 +24,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 public class SteelwoolModLocator extends AbstractJarFileLocator {
@@ -91,7 +90,7 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 			return false;
 		}
 
-		String fileName = path.getFileName().toString();
+		var fileName = path.getFileName().toString();
 
 		return fileName.endsWith(".jar") && !fileName.startsWith(".");
 	}
@@ -104,12 +103,12 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 	// TODO some fabric mods may include a dummy mods.toml to warn forge users; we don't want to skip those
 	private static @Nullable ModCandidate getModCandidate(Path path) {
 		try (ZipFile zf = new ZipFile(path.toFile())) {
-			ZipEntry forgeToml = zf.getEntry("META-INF/mods.toml");
+			var forgeToml = zf.getEntry("META-INF/mods.toml");
 			if (forgeToml != null) {
 				System.out.println("FOUND FORGE TOML for path " + path);
 				return null;
 			}
-			ZipEntry fabricJson = zf.getEntry("fabric.mod.json");
+			var fabricJson = zf.getEntry("fabric.mod.json");
 			if (fabricJson == null) return null;
 			System.out.println("FOUND FABRIC MOD JSON for path " + path);
 

@@ -28,6 +28,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class FabricToForgeConverter {
+	// TODO multithreading for jar conversion? I'm not sure how slow it'll end up being once we can actually handle large/many mods
 	public static List<Path> getConvertedJarPaths(List<ModCandidate> modCandidates) {
 		var mappings = Mappings.getMappings();
 		var remapper = TinyRemapper.newRemapper()
@@ -36,10 +37,10 @@ public class FabricToForgeConverter {
 //				.resolveMissing(true) // what does this one even do?
 				.build();
 
-		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Path.of(Constants.MOD_ID+"/mods"), Constants.MOD_ID+"/mods");
+		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT.resolve("mods"), Constants.MOD_ID+"/mods");
 
 		// Delete all existing mod files
-		// FIXME only do this for dev versions; we want caching for release
+		// FIXME only do this for dev versions; we want caching for release - figure out how to do caching properly though
 		try {
 			Files.walk(modsOutputFolder).forEach(path -> {try {Files.deleteIfExists(path);} catch (IOException ignored) {}});
 		} catch (IOException e) {
@@ -76,39 +77,7 @@ public class FabricToForgeConverter {
 							// TODO find refmap files from fabric json -> mixin configs -> refmaps, rather than using file names
 							// TODO do we need to change the "named:intermediary" key in the "data" element? afaik only the "mappings" element is used anyway?
 							if (oldFile.toString().endsWith("refmap.json")) {
-								// TODO remap more efficiently
-								var methodPattern = Pattern.compile("method_[0-9]+");
-								var fieldPattern = Pattern.compile("field_[0-9]+");
-								var classPattern = Pattern.compile("L[$/\\w]+?class_[0-9]+;");
-
-								var maps = getMaps(mappings);
-
-								var data = Files.readString(oldFile);
-								while (true) {
-									var matcher = methodPattern.matcher(data);
-									if (!matcher.find()) break;
-									var start = matcher.start();
-									var end = matcher.end();
-									var value = matcher.group();
-									data = data.substring(0, start) + maps.methodMap.get(value) + data.substring(end);
-								}
-								while (true) {
-									var matcher = fieldPattern.matcher(data);
-									if (!matcher.find()) break;
-									var start = matcher.start();
-									var end = matcher.end();
-									var value = matcher.group();
-									data = data.substring(0, start) + maps.fieldMap.get(value) + data.substring(end);
-								}
-								while (true) {
-									var matcher = classPattern.matcher(data);
-									if (!matcher.find()) break;
-									var start = matcher.start();
-									var end = matcher.end();
-									var value = matcher.group();
-									data = data.substring(0, start) + maps.classMap.get(value) + data.substring(end);
-								}
-								Files.write(newFile, data.getBytes());
+								remapRefmap(mappings, oldFile, newFile);
 								return FileVisitResult.CONTINUE;
 							}
 							Files.createDirectories(newFile.getParent());
@@ -117,39 +86,10 @@ public class FabricToForgeConverter {
 						}
 					});
 					Files.write(newFs.getPath("/META-INF/mods.toml"), new TomlWriter().writeToString(generateForgeMetadata(candidate.metadata())).getBytes());
-					if (candidate.metadata().mixins.size() > 0) {
-						List<String> manifestLines;
-						// We already copied all files anyway, so just modify the one in the new jar directly
-						var manifestPath = newFs.getPath("/META-INF/MANIFEST.MF");
-						if (Files.exists(manifestPath)) {
-							manifestLines = Files.readAllLines(manifestPath);
-						} else {
-							// FIXME we need to add some default manifest data here
-							manifestLines = new ArrayList<>();
-						}
-						if (/*manifestLines.size() == 0 || */!manifestLines.get(manifestLines.size()-1).isEmpty()) {
-							manifestLines.add("");
-						}
-						// Remove any existing MixinConfigs lines - TODO maybe we should just keep them?
-						for (int i = 0; i < manifestLines.size(); i++) {
-							var line = manifestLines.get(i);
-							if (line.startsWith("MixinConfigs: ")/* || line.startsWith("FMLModType: ")*/) {
-								manifestLines.remove(i);
-								i--;
-							}
-							if (line.length() == 0) {
-								// TODO handle sided mixins
-								// FIXME will this break for excessively long lines?
-								manifestLines.add(i, "MixinConfigs: " + candidate.metadata().mixins.stream()
-										.map(FabricModData.MixinConfig::config).collect(Collectors.joining(",")));
-//								manifestLines.add(i, "FMLModType: GAMELIBRARY");
-								break;
-							}
-						}
 
+					var manifestPath = newFs.getPath("/META-INF/MANIFEST.MF");
+					updateManifest(manifestPath, candidate);
 
-						Files.writeString(manifestPath, String.join("\n", manifestLines));
-					}
 					var dummyModClassPackage = "cursedflames/steelwool/" + candidate.metadata().id;
 					var dummyModClassPath = newFs.getPath(dummyModClassPackage + "/Mod.class");
 					Files.createDirectories(dummyModClassPath.getParent());
@@ -222,6 +162,77 @@ public class FabricToForgeConverter {
 		return config;
 	}
 
+	private static void updateManifest(Path manifestPath, ModCandidate candidate) throws IOException {
+		// FIXME proper manifest handling instead of this mess
+		if (candidate.metadata().mixins.size() > 0) {
+			List<String> manifestLines;
+			// We already copied all files anyway, so just modify the one in the new jar directly
+			if (Files.exists(manifestPath)) {
+				manifestLines = Files.readAllLines(manifestPath);
+			} else {
+				// FIXME we need to add some default manifest data here
+				manifestLines = new ArrayList<>();
+			}
+			if (manifestLines.size() == 0 || !manifestLines.get(manifestLines.size()-1).isEmpty()) {
+				manifestLines.add("");
+			}
+			// Remove any existing MixinConfigs lines - TODO maybe we should just keep them?
+			for (int i = 0; i < manifestLines.size(); i++) {
+				var line = manifestLines.get(i);
+				if (line.startsWith("MixinConfigs: ")/* || line.startsWith("FMLModType: ")*/) {
+					manifestLines.remove(i);
+					i--;
+				}
+				if (line.length() == 0) {
+					// TODO handle sided mixins
+					// FIXME will this break for excessively long lines?
+					manifestLines.add(i, "MixinConfigs: " + candidate.metadata().mixins.stream()
+							.map(FabricModData.MixinConfig::config).collect(Collectors.joining(",")));
+//								manifestLines.add(i, "FMLModType: GAMELIBRARY");
+					break;
+				}
+			}
+
+			Files.writeString(manifestPath, String.join("\n", manifestLines));
+		}
+	}
+
+	private static final Pattern methodPattern = Pattern.compile("method_[0-9]+");
+	private static final Pattern fieldPattern = Pattern.compile("field_[0-9]+");
+	private static final Pattern classPattern = Pattern.compile("L[$/\\w]+?class_[0-9]+;");
+
+	private static void remapRefmap(IMappingProvider mappings, Path oldFile, Path newFile) throws IOException {
+		// TODO remap more efficiently
+		var maps = getMaps(mappings);
+
+		var data = Files.readString(oldFile);
+		while (true) {
+			var matcher = methodPattern.matcher(data);
+			if (!matcher.find()) break;
+			var start = matcher.start();
+			var end = matcher.end();
+			var value = matcher.group();
+			data = data.substring(0, start) + maps.methodMap.get(value) + data.substring(end);
+		}
+		while (true) {
+			var matcher = fieldPattern.matcher(data);
+			if (!matcher.find()) break;
+			var start = matcher.start();
+			var end = matcher.end();
+			var value = matcher.group();
+			data = data.substring(0, start) + maps.fieldMap.get(value) + data.substring(end);
+		}
+		while (true) {
+			var matcher = classPattern.matcher(data);
+			if (!matcher.find()) break;
+			var start = matcher.start();
+			var end = matcher.end();
+			var value = matcher.group();
+			data = data.substring(0, start) + maps.classMap.get(value) + data.substring(end);
+		}
+		Files.write(newFile, data.getBytes());
+	}
+
 	private static byte[] generateDummyModClass(String className, String modid) {
 		var cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
 		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null);
@@ -235,6 +246,7 @@ public class FabricToForgeConverter {
 		constructor.visitVarInsn(Opcodes.ALOAD, 0); // Load `this` onto stack
 		constructor.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false); // Call super constructor
 		constructor.visitInsn(Opcodes.RETURN);
+//		// Java gives a VerifyError without this line even though COMPUTE_FRAMES or COMPUTE_MAXS is supposed to do it automatically
 		constructor.visitMaxs(1, 1);
 		cw.visitEnd();
 		return cw.toByteArray();
