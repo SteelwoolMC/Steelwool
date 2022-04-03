@@ -25,6 +25,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.jar.Manifest;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -55,17 +56,16 @@ public class FabricToForgeConverter {
 		for (var candidate : modCandidates) {
 			var outputPath = modsOutputFolder.resolve(candidate.path().getFileName());
 			try {
-				transformJar(candidate.path(), outputPath, mappings, remapper, candidate);
+				transformJar(candidate.path(), outputPath, mappings, remapper, candidate.metadata());
 				outputJars.add(outputPath);
 			} catch (IOException | URISyntaxException e) {
-				e.printStackTrace();
-				throw new RuntimeException(e);
+				throw new RuntimeException(String.format("Failed to transform mod jar for %s", candidate.metadata().id), e);
 			}
 		}
 		return outputJars;
 	}
 
-	private static void transformJar(Path inputPath, Path outputPath, Mappings.SimpleMappingData mappings, Remapper remapper, ModCandidate candidate) throws URISyntaxException, IOException {
+	private static void transformJar(Path inputPath, Path outputPath, Mappings.SimpleMappingData mappings, Remapper remapper, FabricModData fabricData) throws URISyntaxException, IOException {
 		URI originalJarUri = new URI("jar:"+inputPath.toUri());
 		URI remappedJarUri = new URI("jar:"+outputPath.toUri());
 		try(var oldFs = FileSystems.newFileSystem(originalJarUri, Map.of()); var newFs = FileSystems.newFileSystem(remappedJarUri, Map.of("create", "true"))) {
@@ -86,29 +86,27 @@ public class FabricToForgeConverter {
 
 						byte[] data = classWriter.toByteArray();
 						Files.write(newFile, data);
-
-						return FileVisitResult.CONTINUE;
-					}
-					// TODO find refmap files from fabric json -> mixin configs -> refmaps, rather than using file names
-					// TODO do we need to change the "named:intermediary" key in the "data" element? afaik only the "mappings" element is used anyway?
-					if (fileString.endsWith("refmap.json")) {
+					} else if (fileString.endsWith("refmap.json")) {
+						// TODO find refmap files from fabric json -> mixin configs -> refmaps, rather than using file names
+						// TODO do we need to change the "named:intermediary" key in the "data" element? afaik only the "mappings" element is used anyway?
 						remapRefmap(mappings, oldFile, newFile);
-						return FileVisitResult.CONTINUE;
+					} else {
+						Files.copy(oldFile, newFile);
 					}
-					Files.copy(oldFile, newFile);
+
 					return FileVisitResult.CONTINUE;
 				}
 			});
-			Files.write(newFs.getPath("/META-INF/mods.toml"), new TomlWriter().writeToString(generateForgeMetadata(candidate.metadata())).getBytes());
+			Files.write(newFs.getPath("/META-INF/mods.toml"), new TomlWriter().writeToString(generateForgeMetadata(fabricData)).getBytes());
 
 			// maybe update the manifest while walking all files, instead of here? eh, probably better to do it here in case the file didn't exist in the old jar
 			var manifestPath = newFs.getPath("/META-INF/MANIFEST.MF");
-			updateManifest(manifestPath, candidate);
+			updateManifest(manifestPath, fabricData);
 
-			var dummyModClassPackage = "cursedflames/steelwool/" + candidate.metadata().id;
+			var dummyModClassPackage = "cursedflames/steelwool/" + fabricData.id;
 			var dummyModClassPath = newFs.getPath(dummyModClassPackage + "/Mod.class");
 			Files.createDirectories(dummyModClassPath.getParent());
-			Files.write(dummyModClassPath, generateDummyModClass(dummyModClassPackage + "/Mod", candidate.metadata().id));
+			Files.write(dummyModClassPath, generateDummyModClass(dummyModClassPackage + "/Mod", fabricData.id));
 		}
 	}
 
@@ -136,38 +134,31 @@ public class FabricToForgeConverter {
 		return config;
 	}
 
-	private static void updateManifest(Path manifestPath, ModCandidate candidate) throws IOException {
-		// FIXME proper manifest handling instead of this mess
-		if (candidate.metadata().mixins.size() > 0) {
-			List<String> manifestLines;
-			// We already copied all files anyway, so just modify the one in the new jar directly
-			if (Files.exists(manifestPath)) {
-				manifestLines = Files.readAllLines(manifestPath);
-			} else {
-				// FIXME we need to add some default manifest data here
-				manifestLines = new ArrayList<>();
-			}
-			if (manifestLines.size() == 0 || !manifestLines.get(manifestLines.size()-1).isEmpty()) {
-				manifestLines.add("");
-			}
-			// Remove any existing MixinConfigs lines - TODO maybe we should just keep them?
-			for (int i = 0; i < manifestLines.size(); i++) {
-				var line = manifestLines.get(i);
-				if (line.startsWith("MixinConfigs: ")/* || line.startsWith("FMLModType: ")*/) {
-					manifestLines.remove(i);
-					i--;
-				}
-				if (line.length() == 0) {
-					// TODO handle sided mixins
-					// FIXME will this break for excessively long lines?
-					manifestLines.add(i, "MixinConfigs: " + candidate.metadata().mixins.stream()
-							.map(FabricModData.MixinConfig::config).collect(Collectors.joining(",")));
-//								manifestLines.add(i, "FMLModType: GAMELIBRARY");
-					break;
-				}
-			}
+	private static void updateManifest(Path manifestPath, FabricModData fabricData) throws IOException {
+		Manifest manifest;
 
-			Files.writeString(manifestPath, String.join("\n", manifestLines));
+		if (Files.exists(manifestPath)) {
+			try(var stream = Files.newInputStream(manifestPath)) {
+				manifest = new Manifest(stream);
+			}
+		} else {
+			// TODO do we need to add some default manifest data here?
+			manifest = new Manifest();
+		}
+
+		var mainAttributes = manifest.getMainAttributes();
+		// TODO figure out how to cleanly include/get version data at runtime so we can put the version here
+		//      (manifest data? our manifest would be lost if someone puts SteelWool in a fat jar, but who's going to do that? it'd probably be fine)
+		mainAttributes.putValue("Transformed-With-SteelWool", "0.0.0");
+
+		// TODO handle sided mixins
+		if (fabricData.mixins.size() > 0) {
+			mainAttributes.putValue("MixinConfigs", fabricData.mixins.stream()
+					.map(FabricModData.MixinConfig::config).collect(Collectors.joining(",")));
+		}
+
+		try(var stream = Files.newOutputStream(manifestPath)) {
+			manifest.write(stream);
 		}
 	}
 
@@ -177,8 +168,6 @@ public class FabricToForgeConverter {
 
 	private static void remapRefmap(Mappings.SimpleMappingData mappings, Path oldFile, Path newFile) throws IOException {
 		// FIXME actually parse JSON - rewrite this entire refmap remapper
-//		var maps = getMaps(mappings);
-
 		var data = Files.readString(oldFile);
 		while (true) {
 			var matcher = methodPattern.matcher(data);
