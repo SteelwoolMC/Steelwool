@@ -1,4 +1,4 @@
-package cursedflames.steelwool.jartransform;
+package cursedflames.steelwool.jartransform.mappings;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
@@ -6,6 +6,7 @@ import cursedflames.steelwool.Constants;
 import net.fabricmc.tinyremapper.IMappingProvider;
 import net.fabricmc.tinyremapper.TinyUtils;
 import net.minecraftforge.fml.loading.FMLPaths;
+import org.objectweb.asm.commons.Remapper;
 import oshi.util.tuples.Pair;
 
 import java.io.BufferedReader;
@@ -13,6 +14,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,6 +24,8 @@ public class Mappings {
 	// TODO get game version instead of doing this
 	private static final String TARGET_VERSION = "1.18.2";
 
+	public static record SimpleMappingData(HashMap<String, String> classes, HashMap<String, String> methods, HashMap<String, String> fields) {}
+
 	private static JsonElement readJson(URL url) throws IOException {
 		try (var stream = url.openStream()) {
 			return JsonParser.parseReader(new BufferedReader(new InputStreamReader(stream)));
@@ -30,6 +34,28 @@ public class Mappings {
 
 	private static IMappingProvider mappings(Path file) {
 		return TinyUtils.createTinyMappingProvider(file, "intermediary", "tsrg");
+	}
+
+	private static SimpleMappingData simpleMappings(Path file) throws IOException {
+		var classes = new HashMap<String, String>();
+		var methods = new HashMap<String, String>();
+		var fields = new HashMap<String, String>();
+
+		try (var reader = Files.newBufferedReader(file)) {
+			reader
+					.lines()
+					.filter(line -> !line.isEmpty() && !line.startsWith("#"))
+					.forEach(line -> {
+						var terms = line.strip().split("\t");
+						switch (terms[0]) {
+							case "c" -> classes.put(terms[1], terms[2]);
+							case "m" -> methods.put(terms[2], terms[3]);
+							case "f" -> fields.put(terms[2], terms[3]);
+						}
+					});
+		}
+
+		return new SimpleMappingData(classes, methods, fields);
 	}
 
 	public static IMappingProvider getMappings() {
@@ -50,6 +76,28 @@ public class Mappings {
 		try {
 			return mappings(mappingFile);
 		} catch(RuntimeException e) {
+			throw new RuntimeException("Failed to generate and load mappings file");
+		}
+	}
+
+	public static SimpleMappingData getSimpleMappingData() {
+		// TODO check minecraft version of existing file, somehow - put the version in the filename maybe?
+		//      maybe have a mappings folder and have files for each MC version
+		var steelwoolFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT, Constants.MOD_CACHE_ROOT.toString());
+		var mappingFile = steelwoolFolder.resolve("intermediary_to_tsrg.tiny");
+		if (mappingFile.toFile().exists()) {
+			try {
+				return simpleMappings(mappingFile);
+			} catch(IOException e) {
+				Constants.LOG.warn("Failed to load existing mappings file, regenerating it...");
+			}
+		}
+
+		applyMojangClassNames(mappingFile);
+
+		try {
+			return simpleMappings(mappingFile);
+		} catch(IOException e) {
 			throw new RuntimeException("Failed to generate and load mappings file");
 		}
 	}
@@ -107,7 +155,7 @@ public class Mappings {
 			return new BufferedReader(new InputStreamReader(stream))
 					.lines()
 					// I think they indent using spaces, not tabs, but just in case
-					.filter(line -> !line.startsWith("#") && !line.startsWith(" ") && !line.startsWith("\t"))
+					.filter(line -> !line.isEmpty() && !line.startsWith("#") && !line.startsWith(" ") && !line.startsWith("\t"))
 					.map(line -> {
 						var terms = line.strip().replace(".", "/").split(" +");
 						var obfName = terms[2].substring(0, terms[2].length()-1);
@@ -116,5 +164,59 @@ public class Mappings {
 					})
 					.collect(Collectors.toMap(Pair::getA, Pair::getB));
 		}
+	}
+
+	public static class SteelwoolRemapper extends Remapper {
+		private final SimpleMappingData mappings;
+
+		public SteelwoolRemapper(SimpleMappingData mappings) {
+			this.mappings = mappings;
+		}
+
+		@Override
+		public String map(String typeName) {
+			return mappings.classes.containsKey(typeName) ? mappings.classes.get(typeName) : super.map(typeName);
+		}
+
+		@Override
+		public String mapMethodName(String owner, String name, String descriptor) {
+			return mappings.methods.containsKey(name) ? mappings.methods.get(name) : super.mapMethodName(owner, name, descriptor);
+		}
+
+		@Override
+		public String mapFieldName(String owner, String name, String descriptor) {
+			return mappings.fields.containsKey(name) ? mappings.fields.get(name) : super.mapFieldName(owner, name, descriptor);
+		}
+
+		// Not sure if we need to handle any of these?
+		@Override
+		public String mapInnerClassName(String name, String ownerName, String innerName) {
+			return super.mapInnerClassName(name, ownerName, innerName);
+		}
+
+		@Override
+		public String mapRecordComponentName(String owner, String name, String descriptor) {
+			return super.mapRecordComponentName(owner, name, descriptor);
+		}
+
+		@Override
+		public String mapPackageName(String name) {
+			return super.mapPackageName(name);
+		}
+
+		@Override
+		public String mapMethodDesc(String methodDescriptor) {
+			return super.mapMethodDesc(methodDescriptor);
+		}
+
+		@Override
+		public Object mapValue(Object value) {
+			return super.mapValue(value);
+		}
+
+		// I don't know what these do, but AutoRenamingTool from Forge doesn't do anything with them
+		@Override public String mapModuleName(String name) { return super.mapModuleName(name); }
+		@Override public String mapAnnotationAttributeName(String descriptor, String name) { return super.mapAnnotationAttributeName(descriptor, name); }
+		@Override public String mapInvokeDynamicMethodName(String name, String descriptor) { return super.mapInvokeDynamicMethodName(name, descriptor); }
 	}
 }

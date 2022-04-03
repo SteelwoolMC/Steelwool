@@ -123,7 +123,7 @@ processResources {
 //    }
 
 	// TODO where in the jar should we actually be putting this?
-	from ("build/intermediary_to_tsrg.tiny") {into "cursedflames/steelwool"}
+	from ("build/intermediary_to_tsrg.tiny") {into "cursedflames/steelwool/jartransform/mappings"}
 }
 
 shadowJar {

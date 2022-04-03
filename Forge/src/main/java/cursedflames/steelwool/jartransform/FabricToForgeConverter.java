@@ -3,19 +3,20 @@ package cursedflames.steelwool.jartransform;
 import com.electronwill.nightconfig.core.Config;
 import com.electronwill.nightconfig.toml.TomlWriter;
 import cursedflames.steelwool.Constants;
+import cursedflames.steelwool.jartransform.mappings.Mappings;
 import cursedflames.steelwool.modloading.FabricModData;
 import cursedflames.steelwool.modloading.ModCandidate;
-import net.fabricmc.tinyremapper.FileSystemHandler;
 import net.fabricmc.tinyremapper.IMappingProvider;
-import net.fabricmc.tinyremapper.OutputConsumerPath;
-import net.fabricmc.tinyremapper.TinyRemapper;
 import net.minecraftforge.fml.loading.FMLPaths;
+import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.commons.ClassRemapper;
 
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,69 +25,93 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class FabricToForgeConverter {
 	// TODO multithreading for jar conversion? I'm not sure how slow it'll end up being once we can actually handle large/many mods
 	public static List<Path> getConvertedJarPaths(List<ModCandidate> modCandidates) {
-		var mappings = Mappings.getMappings();
-		var remapper = TinyRemapper.newRemapper()
-				.keepInputData(true)
-				.withMappings(mappings)
-//				.resolveMissing(true) // what does this one even do?
-				.build();
+		var mappings = Mappings.getSimpleMappingData();
+//		var remapper = TinyRemapper.newRemapper()
+//				.keepInputData(true)
+//				.withMappings(mappings)
+////				.resolveMissing(true) // what does this one even do?
+//				.build();
+		var remapper = new Mappings.SteelwoolRemapper(mappings);
 
-		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT.resolve("mods"), Constants.MOD_ID+"/mods");
+		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Path.of("steelwool/mods"), Constants.MOD_ID+"/mods");
 
 		// Delete all existing mod files
 		// FIXME only do this for dev versions; we want caching for release - figure out how to do caching properly though
 		try {
-			Files.walk(modsOutputFolder).forEach(path -> {try {Files.deleteIfExists(path);} catch (IOException ignored) {}});
+			Files.walk(modsOutputFolder).forEach(path -> {
+				// Don't delete the root folder, just the contents
+				if (path.equals(modsOutputFolder)) return;
+				try {
+					Files.deleteIfExists(path);
+				} catch (IOException ignored) {}
+			});
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 
 		var outputJars = new ArrayList<Path>();
 
-		for (var candidate : modCandidates) {
-			var outputPath = modsOutputFolder.resolve(candidate.path().getFileName());
-			try (var outputConsumer = new OutputConsumerPath.Builder(outputPath).build()) {
-				var tag = remapper.createInputTag();
-				remapper.readInputs(tag, candidate.path());
-				remapper.apply(outputConsumer, tag);
-			} catch (IOException e) {
-				throw new RuntimeException();
-			}
-		}
-		remapper.finish();
+//		for (var candidate : modCandidates) {
+//			var outputPath = modsOutputFolder.resolve(candidate.path().getFileName());
+//			try (var outputConsumer = new OutputConsumerPath.Builder(outputPath).build()) {
+//				var tag = remapper.createInputTag();
+//				remapper.readInputs(tag, candidate.path());
+//				remapper.apply(outputConsumer, tag);
+//			} catch (IOException e) {
+//				throw new RuntimeException();
+//			}
+//		}
+//		remapper.finish();
 
 		for (var candidate : modCandidates) {
 			var outputPath = modsOutputFolder.resolve(candidate.path().getFileName());
 			try {
 				URI originalJarUri = new URI("jar:"+candidate.path().toUri());
 				URI remappedJarUri = new URI("jar:"+outputPath.toUri());
-				try(var oldFs = FileSystemHandler.open(originalJarUri); var newFs = FileSystemHandler.open(remappedJarUri)) {
+				try(var oldFs = FileSystems.newFileSystem(originalJarUri, Map.of()); var newFs = FileSystems.newFileSystem(remappedJarUri, Map.of("create", "true"))) {
 					Files.walkFileTree(oldFs.getPath("/"), new SimpleFileVisitor<>() {
 						@Override
 						public FileVisitResult visitFile(Path oldFile, BasicFileAttributes attrs) throws IOException {
-							var newFile = newFs.getPath(oldFile.toString());
-							if (Files.exists(newFile)) {
+							var fileString = oldFile.toString();
+							var newFile = newFs.getPath(fileString);
+//							if (Files.exists(newFile)) {
+//								return FileVisitResult.CONTINUE;
+//							}
+
+							Files.createDirectories(newFile.getParent());
+
+							if (fileString.endsWith(".class")) {
+								var classReader = new ClassReader(Files.readAllBytes(oldFile));
+								var classWriter = new ClassWriter(classReader, 0);
+								var classRemapper = new ClassRemapper(classWriter, remapper);
+
+								classReader.accept(classRemapper, 0);
+
+								byte[] data = classWriter.toByteArray();
+								Files.write(newFile, data);
+
 								return FileVisitResult.CONTINUE;
 							}
 							// TODO find refmap files from fabric json -> mixin configs -> refmaps, rather than using file names
 							// TODO do we need to change the "named:intermediary" key in the "data" element? afaik only the "mappings" element is used anyway?
-							if (oldFile.toString().endsWith("refmap.json")) {
+							if (fileString.endsWith("refmap.json")) {
 								remapRefmap(mappings, oldFile, newFile);
 								return FileVisitResult.CONTINUE;
 							}
-							Files.createDirectories(newFile.getParent());
 							Files.copy(oldFile, newFile);
 							return FileVisitResult.CONTINUE;
 						}
 					});
 					Files.write(newFs.getPath("/META-INF/mods.toml"), new TomlWriter().writeToString(generateForgeMetadata(candidate.metadata())).getBytes());
 
+					// maybe update the manifest while walking all files, instead of here? eh, probably better to do it here in case the file didn't exist in the old jar
 					var manifestPath = newFs.getPath("/META-INF/MANIFEST.MF");
 					updateManifest(manifestPath, candidate);
 
@@ -199,11 +224,11 @@ public class FabricToForgeConverter {
 
 	private static final Pattern methodPattern = Pattern.compile("method_[0-9]+");
 	private static final Pattern fieldPattern = Pattern.compile("field_[0-9]+");
-	private static final Pattern classPattern = Pattern.compile("L[$/\\w]+?class_[0-9]+;");
+	private static final Pattern classPattern = Pattern.compile("[$/\\w]+class_[0-9]+");
 
-	private static void remapRefmap(IMappingProvider mappings, Path oldFile, Path newFile) throws IOException {
-		// TODO remap more efficiently
-		var maps = getMaps(mappings);
+	private static void remapRefmap(Mappings.SimpleMappingData mappings, Path oldFile, Path newFile) throws IOException {
+		// FIXME actually parse JSON - rewrite this entire refmap remapper
+//		var maps = getMaps(mappings);
 
 		var data = Files.readString(oldFile);
 		while (true) {
@@ -212,7 +237,7 @@ public class FabricToForgeConverter {
 			var start = matcher.start();
 			var end = matcher.end();
 			var value = matcher.group();
-			data = data.substring(0, start) + maps.methodMap.get(value) + data.substring(end);
+			data = data.substring(0, start) + mappings.methods().get(value) + data.substring(end);
 		}
 		while (true) {
 			var matcher = fieldPattern.matcher(data);
@@ -220,7 +245,7 @@ public class FabricToForgeConverter {
 			var start = matcher.start();
 			var end = matcher.end();
 			var value = matcher.group();
-			data = data.substring(0, start) + maps.fieldMap.get(value) + data.substring(end);
+			data = data.substring(0, start) + mappings.fields().get(value) + data.substring(end);
 		}
 		while (true) {
 			var matcher = classPattern.matcher(data);
@@ -228,7 +253,12 @@ public class FabricToForgeConverter {
 			var start = matcher.start();
 			var end = matcher.end();
 			var value = matcher.group();
-			data = data.substring(0, start) + maps.classMap.get(value) + data.substring(end);
+			// Hack to deal with Lnet.foo.Bar; class references since the regex grabs the L as well
+			if (value.startsWith("L")) {
+				start++;
+				value = value.substring(1);
+			}
+			data = data.substring(0, start) + mappings.classes().get(value) + data.substring(end);
 		}
 		Files.write(newFile, data.getBytes());
 	}
