@@ -1,12 +1,12 @@
 {
 	"required": true,
 	"minVersion": "0.8",
-	"package": "cursedflames.examplemod.mixin",
+	"package": "cursedflames.steelwool.mod.mixin",
 	"compatibilityLevel": "JAVA_17",
 	"mixins": [
 	],
 	"client": [
-		"ExampleForgeMixin"
+		"client.MixinMinecraft"
 	],
 	"server": [
 	],

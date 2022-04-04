@@ -2,6 +2,7 @@ package cursedflames.steelwool;
 
 import cpw.mods.jarhandling.SecureJar;
 import cursedflames.steelwool.jartransform.FabricToForgeConverter;
+import cursedflames.steelwool.modloading.EntrypointsData;
 import cursedflames.steelwool.modloading.FabricModData;
 import cursedflames.steelwool.modloading.ModCandidate;
 import net.minecraftforge.fml.loading.FMLEnvironment;
@@ -15,6 +16,7 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -28,6 +30,7 @@ import java.util.zip.ZipFile;
 
 public class SteelwoolModLocator extends AbstractJarFileLocator {
 	private final Path modFolder;
+	private final EntrypointsData entrypoints = EntrypointsData.createInstance();
 
 	public SteelwoolModLocator() {
 		this.modFolder = FMLPaths.MODSDIR.get();
@@ -67,16 +70,22 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 
 		var modCandidates = new ArrayList<ModCandidate>();
 		for (var mod : mods) {
-			System.out.println("mod = " + mod);
 			var cand = getModCandidate(mod);
 			if (cand != null) {
 				modCandidates.add(cand);
+				cand.metadata().entrypoints.forEach((prototype, entrypoints) -> {
+					entrypoints.forEach(entrypoint -> {
+						this.entrypoints.addEntrypoint(prototype, entrypoint);
+					});
+				});
 			}
 		}
 
 		Constants.LOG.info("Found {} fabric mod candidates", modCandidates.size());
 
 		var outputJars = FabricToForgeConverter.getConvertedJarPaths(modCandidates);
+		// Add our own internal mod here so that it gets loaded
+		outputJars.add(0, getInternalMod());
 		return outputJars.stream();
 	}
 
@@ -157,5 +166,19 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 	public boolean isValid(IModFile modFile) {
 		// TODO validate any mods that we give to forge - forge's implementations of IModLocator seem to just `return true;`?
 		return true;
+	}
+
+	private static Path getInternalMod() {
+		// TODO define steelwoolFolder statically somewhere? (Constants?)
+		var steelwoolFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT, Constants.MOD_CACHE_ROOT.toString());
+		var innerJarPath = steelwoolFolder.resolve(Constants.INNER_JAR_NAME);
+		// TODO caching
+		try (var stream = SteelwoolModLocator.class.getResourceAsStream("../../" + Constants.INNER_JAR_NAME)) {
+			Files.copy(stream, innerJarPath, StandardCopyOption.REPLACE_EXISTING);
+		} catch (IOException e) {
+			e.printStackTrace();
+			throw new RuntimeException("Failed to extract internal mod jar", e);
+		}
+		return innerJarPath;
 	}
 }

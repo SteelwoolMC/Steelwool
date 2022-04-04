@@ -103,6 +103,7 @@ public class FabricToForgeConverter {
 			var manifestPath = newFs.getPath("/META-INF/MANIFEST.MF");
 			updateManifest(manifestPath, fabricData);
 
+			// TODO probably use a unique subpackage to prevent possible clashes if a mod has a *really* weird id
 			var dummyModClassPackage = "cursedflames/steelwool/" + fabricData.id;
 			var dummyModClassPath = newFs.getPath(dummyModClassPackage + "/Mod.class");
 			Files.createDirectories(dummyModClassPath.getParent());

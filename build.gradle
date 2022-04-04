@@ -20,7 +20,6 @@ subprojects {
     java.withJavadocJar()
         
     jar {
-//		archiveClassifier = 'slim'
 		// TODO do we actually want any of these attributes?
 
 //        manifest {

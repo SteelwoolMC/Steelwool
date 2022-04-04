@@ -12,9 +12,9 @@ buildscript {
     }
 }
 
-//plugins {
-//	id 'com.github.johnrengelman.shadow' version '7.1.2'
-//}
+plugins {
+	id 'com.github.johnrengelman.shadow' version '7.1.2'
+}
 apply plugin: 'java'
 apply plugin: 'net.minecraftforge.gradle'
 apply plugin: 'eclipse'
@@ -24,16 +24,14 @@ apply plugin: 'maven-publish'
 configurations {
 	intermediary
 	mcpconfig
-//	shade
-//	implementation.extendsFrom shade
+	shade
+	implementation.extendsFrom shade
 }
 
 dependencies {
 	// TODO extract versions to gradle.properties
 	intermediary "net.fabricmc:intermediary:1.18.2:v2"
 	mcpconfig "de.oceanlabs.mcp:mcp_config:1.18.2@zip"
-
-	// shade "net.fabricmc:tiny-remapper:0.3.1.71"
 }
 
 
@@ -43,7 +41,7 @@ apply plugin: GenerateMappingsPlugin
 archivesBaseName = "${mod_name}-${minecraft_version}"
 
 mixin {
-    add sourceSets.main, "${mod_id}.refmap.json"
+//    add sourceSets.main, "${mod_id}.refmap.json"
 
 //    config "${mod_id}.mixins.json"
 //    config "${mod_id}.forge.mixins.json"
@@ -107,8 +105,23 @@ minecraft {
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
-//    compileOnly project(":Common")
+	shade "net.fabricmc:fabric-loader:${fabric_loader_version}"
+//	implementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
+//  implementation project(":Mod")
     annotationProcessor 'org.spongepowered:mixin:0.8.4-SNAPSHOT:processor'
+}
+
+// TODO find a cleaner way to only include the license and api package of fabric-loader
+shadowJar {
+	exclude "fabric*.json"
+	exclude "fabric.mod.json"
+	exclude "ui/**"
+	exclude "net/fabricmc/loader/**"
+	exclude "assets/fabricloader/**"
+	// TODO is there anything here from fabric-loader we want to keep?
+	// exclude fabric-loader's service providers
+	exclude "META-INF/services/*fabric**"
+	exclude "META-INF/services/*spongepowered**"
 }
 
 //tasks.withType(JavaCompile) {
@@ -126,18 +139,47 @@ processResources {
 	from ("build/intermediary_to_tsrg.tiny") {into "cursedflames/steelwool/jartransform/mappings"}
 }
 
-//shadowJar {
-//	archiveClassifier = ''
-//	configurations = [project.configurations.shade]
-//	finalizedBy 'reobfShadowJar'
-//	exclude 'asm*.jar'
-//}
-//
-//assemble.dependsOn shadowJar
-//
-//reobf {
-//	shadowJar {}
-//}
+// FIXME this currently doesn't re-run when the output name is changed
+task processSource(type: Sync) {
+	from sourceSets.main.java
+	filesMatching ("**/Constants.java") {
+		expand(["inner_jar": project(":Mod").jar.archiveName])
+	}
+
+	into "$buildDir/src"
+}
+
+compileJava {
+	source = processSource.outputs
+}
+
+jar {
+	archiveClassifier = "slim"
+}
+
+// Workaround for a bug in shadow. see: https://github.com/johnrengelman/shadow/issues/111#issuecomment-317233031
+// Shadow has no way to exclude jars from being unzipped, so we nest a jar inside another jar, so that it'll only unzip the outer one.
+task shadowBugWorkaround(type: Jar) {
+	dependsOn project(":Mod").jar
+	// TODO exclude this from the build/libs directory?
+	archiveBaseName = "shadow_bug_workaround_ignore_this"
+	from project(":Mod").jar.archiveFile.get()
+}
+
+shadowJar {
+	dependsOn shadowBugWorkaround
+	from shadowBugWorkaround
+
+	archiveClassifier = ''
+	configurations = [project.configurations.shade]
+	finalizedBy 'reobfShadowJar'
+}
+
+assemble.dependsOn shadowJar
+
+reobf {
+	shadowJar {}
+}
 
 jar.finalizedBy('reobfJar')
 

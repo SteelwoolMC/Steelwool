@@ -31,7 +31,7 @@ public class FabricModData {
 		}
 	}
 
-	public static record EntryPoint(String adapter, String value) {}
+	public static record Entrypoint(String adapter, String value) {}
 
 	public static record MixinConfig(String config, Side environment) {}
 
@@ -41,7 +41,7 @@ public class FabricModData {
 
 	// Mod loading data
 	public final Side environment;
-	public final Map<String, List<EntryPoint>> entrypoints;
+	public final Map<String, List<Entrypoint>> entrypoints;
 	public final List<MixinConfig> mixins;
 
 	// Metadata
@@ -51,7 +51,7 @@ public class FabricModData {
 	public final List<String> authors;
 	public final List<String> contributors;
 
-	private FabricModData(String id, String version, Side environment, Map<String, List<EntryPoint>> entrypoints, List<MixinConfig> mixins,
+	private FabricModData(String id, String version, Side environment, Map<String, List<Entrypoint>> entrypoints, List<MixinConfig> mixins,
 						  String name, String description, List<String> authors, List<String> contributors) {
 		this.id = id;
 		this.version = version;
@@ -90,11 +90,11 @@ public class FabricModData {
 
 		// Mod loading data
 		Side environment = Side.fromString(getStringOrDefault(data, "environment", ""));
-		Map<String, List<EntryPoint>> entrypoints = new HashMap<>();
+		Map<String, List<Entrypoint>> entrypoints = new HashMap<>();
 		var entrypointData = data.getAsJsonObject("entrypoints");
 		if (entrypointData != null) {
 			entrypointData.keySet().forEach(key -> {
-				var outputArray = new ArrayList<EntryPoint>();
+				var outputArray = new ArrayList<Entrypoint>();
 				var array = entrypointData.getAsJsonArray(key);
 				array.forEach(entrypoint -> {
 					if (entrypoint.isJsonObject()) {
@@ -104,9 +104,9 @@ public class FabricModData {
 							// TODO
 							throw new RuntimeException();
 						}
-						outputArray.add(new EntryPoint(adapter, value));
+						outputArray.add(new Entrypoint(adapter, value));
 					} else if (entrypoint.isJsonPrimitive() && entrypoint.getAsJsonPrimitive().isString()) {
-						outputArray.add(new EntryPoint("default", entrypoint.getAsString()));
+						outputArray.add(new Entrypoint("default", entrypoint.getAsString()));
 					} else {
 						// TODO
 						throw new RuntimeException();
