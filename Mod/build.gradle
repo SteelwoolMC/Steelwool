@@ -90,6 +90,9 @@ processResources {
     }
 }
 
+// FIXME the refmap isn't added to the jar on rebuilds for some reason, so we have to force recompilation every time
+compileJava.outputs.upToDateWhen { false }
+
 jar.finalizedBy('reobfJar')
 
 //publishing {

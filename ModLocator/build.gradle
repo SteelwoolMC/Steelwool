@@ -18,7 +18,6 @@ plugins {
 apply plugin: 'java'
 apply plugin: 'net.minecraftforge.gradle'
 apply plugin: 'eclipse'
-apply plugin: 'org.spongepowered.mixin'
 apply plugin: 'maven-publish'
 
 configurations {
@@ -40,23 +39,11 @@ apply plugin: GenerateMappingsPlugin
 
 archivesBaseName = "${mod_name}-${minecraft_version}"
 
-mixin {
-//    add sourceSets.main, "${mod_id}.refmap.json"
-
-//    config "${mod_id}.mixins.json"
-//    config "${mod_id}.forge.mixins.json"
-}
-
 minecraft {
     mappings channel: 'official', version: minecraft_version
 
-    if (project.hasProperty('forge_ats_enabled') && project.findProperty('forge_ats_enabled').toBoolean()) {
-        // This location is hardcoded in Forge and can not be changed.
-        // https://github.com/MinecraftForge/MinecraftForge/blob/be1698bb1554f9c8fa2f58e32b9ab70bc4385e60/fmlloader/src/main/java/net/minecraftforge/fml/loading/moddiscovery/ModFile.java#L123
-        accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')
-        project.logger.debug('Forge Access Transformers are enabled for this project.')
-    }
-
+	// TODO these run configurations will probably have to be different since this subproject is a ModLocator
+	//      doesn't matter right now since it doesn't work in dev environments anyway
     runs {
         client {
             workingDirectory project.file('run')
@@ -101,14 +88,10 @@ minecraft {
     }
 }
 
-//sourceSets.main.resources.srcDir 'src/generated/resources'
-
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 	shade "net.fabricmc:fabric-loader:${fabric_loader_version}"
 //	implementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
-//  implementation project(":Mod")
-    annotationProcessor 'org.spongepowered:mixin:0.8.4-SNAPSHOT:processor'
 }
 
 // TODO find a cleaner way to only include the license and api package of fabric-loader
@@ -124,17 +107,7 @@ shadowJar {
 	exclude "META-INF/services/*spongepowered**"
 }
 
-//tasks.withType(JavaCompile) {
-//    source(project(":Common").sourceSets.main.allSource)
-//}
-
 processResources {
-//    from project(":Common").sourceSets.main.resources
-
-//    filesMatching('*.mixins.json') {
-//        expand "refmap_target": "${mod_id}."
-//    }
-
 	// TODO where in the jar should we actually be putting this?
 	from ("build/intermediary_to_tsrg.tiny") {into "cursedflames/steelwool/jartransform/mappings"}
 }

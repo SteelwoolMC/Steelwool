@@ -35,7 +35,7 @@ public class FabricToForgeConverter {
 		var mappings = Mappings.getSimpleMappingData();
 		var remapper = new Mappings.SteelwoolRemapper(mappings);
 
-		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Path.of("steelwool/mods"), Constants.MOD_ID+"/mods");
+		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT.resolve("mods"), Constants.MOD_ID+"/mods");
 
 		// Delete all existing mod files
 		// FIXME only do this for dev versions; we want caching for release - figure out how to do caching properly though
@@ -103,8 +103,7 @@ public class FabricToForgeConverter {
 			var manifestPath = newFs.getPath("/META-INF/MANIFEST.MF");
 			updateManifest(manifestPath, fabricData);
 
-			// TODO probably use a unique subpackage to prevent possible clashes if a mod has a *really* weird id
-			var dummyModClassPackage = "cursedflames/steelwool/" + fabricData.id;
+			var dummyModClassPackage = "cursedflames/steelwool/generated/" + fabricData.id;
 			var dummyModClassPath = newFs.getPath(dummyModClassPackage + "/Mod.class");
 			Files.createDirectories(dummyModClassPath.getParent());
 			Files.write(dummyModClassPath, generateDummyModClass(dummyModClassPackage + "/Mod", fabricData.id));

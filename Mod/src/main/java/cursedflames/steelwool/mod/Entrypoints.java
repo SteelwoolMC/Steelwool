@@ -23,8 +23,5 @@ public class Entrypoints {
 			e.printStackTrace();
 			throw new RuntimeException(e);
 		}
-
-		// TODO
-//		return null;
 	}
 }
