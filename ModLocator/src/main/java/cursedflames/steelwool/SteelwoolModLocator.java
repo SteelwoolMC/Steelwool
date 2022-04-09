@@ -1,5 +1,6 @@
 package cursedflames.steelwool;
 
+import cpw.mods.jarhandling.JarMetadata;
 import cpw.mods.jarhandling.SecureJar;
 import cursedflames.steelwool.jartransform.FabricToForgeConverter;
 import cursedflames.steelwool.modloading.EntrypointsData;
@@ -10,6 +11,7 @@ import net.minecraftforge.fml.loading.FMLPaths;
 import net.minecraftforge.fml.loading.ModDirTransformerDiscoverer;
 import net.minecraftforge.fml.loading.StringUtils;
 import net.minecraftforge.fml.loading.moddiscovery.AbstractJarFileLocator;
+import net.minecraftforge.fml.loading.moddiscovery.ModFileParser;
 import net.minecraftforge.forgespi.locating.IModFile;
 
 import javax.annotation.Nullable;
@@ -22,8 +24,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Consumer;
-import java.util.function.Function;
+import java.util.Optional;
+import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipFile;
@@ -35,6 +37,7 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 	public SteelwoolModLocator() {
 		this.modFolder = FMLPaths.MODSDIR.get();
 		Constants.LOG.info("SteelWool mod locator instantiated. Hi Forge :)");
+		ModIdHack.makeForgeAcceptDashesInModids();
 	}
 
 	@Override
@@ -145,14 +148,33 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 		return null; //TODO
 	}
 
+	/**
+	 * Copied from parent logic, but constructs a {@link ModIdHack.WrappedModFile} instead, in order to replace {@code -} with {@code _} in mod ids
+	 *
+	 * Also removes the handling for non {@code mods.toml} jars, as all steelwool-generated jars will have a {@code mods.toml}.
+	 */
 	@Override
-	public void scanFile(IModFile modFile, Consumer<Path> pathConsumer) {
-		final Function<Path, SecureJar.Status> status = p->modFile.getSecureJar().verifyPath(p);
-		try (Stream<Path> files = Files.find(modFile.getSecureJar().getRootPath(), Integer.MAX_VALUE, (p, a) -> p.getNameCount() > 0 && p.getFileName().toString().endsWith(".class"))) {
-			modFile.setSecurityStatus(files.peek(pathConsumer).map(status).reduce((s1, s2)-> SecureJar.Status.values()[Math.min(s1.ordinal(), s2.ordinal())]).orElse(SecureJar.Status.INVALID));
-		} catch (IOException e) {
-			e.printStackTrace();
+	protected Optional<IModFile> createMod(Path... path) {
+		var mjm = ModIdHack.createModJarMetadata();
+		var sj = SecureJar.from(
+				Manifest::new,
+				jar -> jar.findFile(MODS_TOML).isPresent() ? mjm : JarMetadata.from(jar, path),
+				(root, p) -> true,
+				path
+		);
+
+		IModFile mod;
+		if (sj.findFile(MODS_TOML).isPresent()) {
+			mod = new ModIdHack.WrappedModFile(sj, this, ModFileParser::modsTomlParser);
+		} else {
+			// We always generate jars with mods.toml currently, so the manifest FMLModType check isn't necessary
+			// FIXME warning/error? probably only in dev builds.
+			// TODO a way of determining whether we're in a dev build... the Constants class?
+			return Optional.empty();
 		}
+
+		mjm.setModFile(mod);
+		return Optional.of(mod);
 	}
 
 	@Override

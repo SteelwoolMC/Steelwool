@@ -103,7 +103,10 @@ public class FabricToForgeConverter {
 			var manifestPath = newFs.getPath("/META-INF/MANIFEST.MF");
 			updateManifest(manifestPath, fabricData);
 
-			var dummyModClassPackage = "cursedflames/steelwool/generated/" + fabricData.id;
+			// Fabric allows for `-` in mod ids, which isn't allowed in java packages
+			var escapedId = fabricData.id.replace("-", "_");
+
+			var dummyModClassPackage = "cursedflames/steelwool/generated/" + escapedId;
 			var dummyModClassPath = newFs.getPath(dummyModClassPackage + "/Mod.class");
 			Files.createDirectories(dummyModClassPath.getParent());
 			Files.write(dummyModClassPath, generateDummyModClass(dummyModClassPackage + "/Mod", fabricData.id));
