@@ -1,4 +1,4 @@
-package cursedflames.steelwool.modloading;
+package io.github.steelwoolmc.steelwool.modloading;
 
 import java.nio.file.Path;
 

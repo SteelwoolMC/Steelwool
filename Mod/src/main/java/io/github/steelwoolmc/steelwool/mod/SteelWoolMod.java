@@ -1,6 +1,6 @@
-package cursedflames.steelwool.mod;
+package io.github.steelwoolmc.steelwool.mod;
 
-import cursedflames.steelwool.Constants;
+import io.github.steelwoolmc.steelwool.Constants;
 import net.minecraftforge.fml.common.Mod;
 
 @Mod(Constants.MOD_ID)

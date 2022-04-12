@@ -1,11 +1,11 @@
-package cursedflames.steelwool;
+package io.github.steelwoolmc.steelwool;
 
 import cpw.mods.jarhandling.JarMetadata;
 import cpw.mods.jarhandling.SecureJar;
-import cursedflames.steelwool.jartransform.FabricToForgeConverter;
-import cursedflames.steelwool.modloading.EntrypointsData;
-import cursedflames.steelwool.modloading.FabricModData;
-import cursedflames.steelwool.modloading.ModCandidate;
+import io.github.steelwoolmc.steelwool.jartransform.FabricToForgeConverter;
+import io.github.steelwoolmc.steelwool.modloading.EntrypointsData;
+import io.github.steelwoolmc.steelwool.modloading.FabricModData;
+import io.github.steelwoolmc.steelwool.modloading.ModCandidate;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.loading.FMLPaths;
 import net.minecraftforge.fml.loading.ModDirTransformerDiscoverer;

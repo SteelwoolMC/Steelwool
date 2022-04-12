@@ -1,6 +1,6 @@
-package cursedflames.steelwool.mod.mixin.client;
+package io.github.steelwoolmc.steelwool.mod.mixin.client;
 
-import cursedflames.steelwool.mod.Entrypoints;
+import io.github.steelwoolmc.steelwool.mod.Entrypoints;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

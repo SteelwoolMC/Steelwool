@@ -1,7 +1,7 @@
-package cursedflames.steelwool.mod;
+package io.github.steelwoolmc.steelwool.mod;
 
-import cursedflames.steelwool.Constants;
-import cursedflames.steelwool.modloading.EntrypointsData;
+import io.github.steelwoolmc.steelwool.Constants;
+import io.github.steelwoolmc.steelwool.modloading.EntrypointsData;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;

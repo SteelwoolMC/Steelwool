@@ -1,11 +1,11 @@
-package cursedflames.steelwool.jartransform;
+package io.github.steelwoolmc.steelwool.jartransform;
 
 import com.electronwill.nightconfig.core.Config;
 import com.electronwill.nightconfig.toml.TomlWriter;
-import cursedflames.steelwool.Constants;
-import cursedflames.steelwool.jartransform.mappings.Mappings;
-import cursedflames.steelwool.modloading.FabricModData;
-import cursedflames.steelwool.modloading.ModCandidate;
+import io.github.steelwoolmc.steelwool.Constants;
+import io.github.steelwoolmc.steelwool.jartransform.mappings.Mappings;
+import io.github.steelwoolmc.steelwool.modloading.FabricModData;
+import io.github.steelwoolmc.steelwool.modloading.ModCandidate;
 import net.minecraftforge.fml.loading.FMLPaths;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
@@ -106,7 +106,7 @@ public class FabricToForgeConverter {
 			// Fabric allows for `-` in mod ids, which isn't allowed in java packages
 			var escapedId = fabricData.id.replace("-", "_");
 
-			var dummyModClassPackage = "cursedflames/steelwool/generated/" + escapedId;
+			var dummyModClassPackage = "io/github/steelwoolmc/steelwool/generated/" + escapedId;
 			var dummyModClassPath = newFs.getPath(dummyModClassPackage + "/Mod.class");
 			Files.createDirectories(dummyModClassPath.getParent());
 			Files.write(dummyModClassPath, generateDummyModClass(dummyModClassPackage + "/Mod", fabricData.id));

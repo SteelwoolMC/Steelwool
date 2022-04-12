@@ -1,4 +1,4 @@
-package cursedflames.steelwool;
+package io.github.steelwoolmc.steelwool;
 
 import net.fabricmc.mapping.tree.FieldDef;
 import net.fabricmc.mapping.tree.MethodDef;

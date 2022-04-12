@@ -31,9 +31,9 @@ displayName="SteelWool" #mandatory
 # TODO mod icon
 logoFile="steelwool.png" #optional
 # A text field displayed in the mod UI
-credits="Thanks for this example mod goes to Java" #optional
+# credits="Thanks for this example mod goes to Java" #optional
 # A text field displayed in the mod UI
-authors="CursedFlames" #optional
+authors="The SteelwoolMC team" #optional
 # The description text for the mod (multi line!) (#mandatory)
 # TODO better description?
 description='''

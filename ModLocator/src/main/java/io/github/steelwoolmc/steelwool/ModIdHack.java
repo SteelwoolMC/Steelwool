@@ -1,4 +1,4 @@
-package cursedflames.steelwool;
+package io.github.steelwoolmc.steelwool;
 
 import cpw.mods.jarhandling.SecureJar;
 import net.minecraftforge.fml.loading.moddiscovery.ModFile;

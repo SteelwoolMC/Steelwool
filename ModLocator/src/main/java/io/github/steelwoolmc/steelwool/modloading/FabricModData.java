@@ -1,8 +1,8 @@
-package cursedflames.steelwool.modloading;
+package io.github.steelwoolmc.steelwool.modloading;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import cursedflames.steelwool.Constants;
+import io.github.steelwoolmc.steelwool.Constants;
 
 import java.io.InputStream;
 import java.io.InputStreamReader;

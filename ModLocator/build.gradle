@@ -1,4 +1,4 @@
-import cursedflames.steelwool.GenerateMappingsPlugin
+import io.github.steelwoolmc.steelwool.GenerateMappingsPlugin
 
 buildscript {
     repositories {

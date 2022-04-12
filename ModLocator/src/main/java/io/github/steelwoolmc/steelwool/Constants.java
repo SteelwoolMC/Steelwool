@@ -1,4 +1,4 @@
-package cursedflames.steelwool;
+package io.github.steelwoolmc.steelwool;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

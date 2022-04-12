@@ -1,6 +1,6 @@
-package cursedflames.steelwool.modloading;
+package io.github.steelwoolmc.steelwool.modloading;
 
-import cursedflames.steelwool.Constants;
+import io.github.steelwoolmc.steelwool.Constants;
 
 import java.util.ArrayList;
 import java.util.Collections;

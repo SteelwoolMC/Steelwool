@@ -1,4 +1,4 @@
-package cursedflames.steelwool;
+package io.github.steelwoolmc.steelwool;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;

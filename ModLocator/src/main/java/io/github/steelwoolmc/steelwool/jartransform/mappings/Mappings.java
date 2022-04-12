@@ -1,8 +1,8 @@
-package cursedflames.steelwool.jartransform.mappings;
+package io.github.steelwoolmc.steelwool.jartransform.mappings;
 
 import com.google.gson.JsonElement;
-import cursedflames.steelwool.Constants;
-import cursedflames.steelwool.Utils;
+import io.github.steelwoolmc.steelwool.Constants;
+import io.github.steelwoolmc.steelwool.Utils;
 import net.minecraftforge.fml.loading.FMLPaths;
 import org.objectweb.asm.commons.Remapper;
 import oshi.util.tuples.Pair;

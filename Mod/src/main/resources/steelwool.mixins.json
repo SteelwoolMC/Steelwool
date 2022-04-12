@@ -1,7 +1,7 @@
 {
 	"required": true,
 	"minVersion": "0.8",
-	"package": "cursedflames.steelwool.mod.mixin",
+	"package": "io.github.steelwoolmc.steelwool.mod.mixin",
 	"compatibilityLevel": "JAVA_17",
 	"mixins": [
 	],
