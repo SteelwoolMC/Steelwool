@@ -54,6 +54,7 @@ public class ModIdHack {
 		try {
 			// use Class.forName to force the static initializer to run first,
 			// so that it doesn't run after us and overwrite the value we set
+			// - Unsafe.ensureClassInitialized() is deprecated
 			try { Class.forName("net.minecraftforge.fml.loading.moddiscovery.ModInfo"); } catch (ClassNotFoundException ignored) {}
 
 			var unsafe = Utils.getUnsafe();

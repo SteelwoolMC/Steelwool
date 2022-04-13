@@ -16,8 +16,8 @@ subprojects {
     apply plugin: 'java'
     
     java.toolchain.languageVersion = JavaLanguageVersion.of(17)
-    java.withSourcesJar()
-    java.withJavadocJar()
+//     java.withSourcesJar()
+//     java.withJavadocJar()
         
     jar {
 		// TODO do we actually want any of these attributes?

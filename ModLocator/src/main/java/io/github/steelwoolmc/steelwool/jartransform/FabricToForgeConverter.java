@@ -2,6 +2,10 @@ package io.github.steelwoolmc.steelwool.jartransform;
 
 import com.electronwill.nightconfig.core.Config;
 import com.electronwill.nightconfig.toml.TomlWriter;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import io.github.steelwoolmc.steelwool.Constants;
 import io.github.steelwoolmc.steelwool.jartransform.mappings.Mappings;
 import io.github.steelwoolmc.steelwool.modloading.FabricModData;
@@ -167,41 +171,73 @@ public class FabricToForgeConverter {
 
 	private static final Pattern methodPattern = Pattern.compile("method_[0-9]+");
 	private static final Pattern fieldPattern = Pattern.compile("field_[0-9]+");
-	private static final Pattern classPattern = Pattern.compile("[$/\\w]+class_[0-9]+");
+	private static final Pattern classPattern = Pattern.compile("^[$/\\w]+class_[0-9]+$");
+	private static final Pattern classDescriptorPattern = Pattern.compile("(?<=L)[$/\\w]+?class_[0-9]+(?=;)");
 
 	private static void remapRefmap(Mappings.SimpleMappingData mappings, Path oldFile, Path newFile) throws IOException {
-		// FIXME actually parse JSON - rewrite this entire refmap remapper
-		var data = Files.readString(oldFile);
-		while (true) {
-			var matcher = methodPattern.matcher(data);
-			if (!matcher.find()) break;
-			var start = matcher.start();
-			var end = matcher.end();
-			var value = matcher.group();
-			data = data.substring(0, start) + mappings.methods().get(value) + data.substring(end);
+		JsonObject jsonRoot;
+		try (var reader = Files.newBufferedReader(oldFile)) {
+			jsonRoot = JsonParser.parseReader(reader).getAsJsonObject();
 		}
-		while (true) {
-			var matcher = fieldPattern.matcher(data);
-			if (!matcher.find()) break;
-			var start = matcher.start();
-			var end = matcher.end();
-			var value = matcher.group();
-			data = data.substring(0, start) + mappings.fields().get(value) + data.substring(end);
+
+		remapRefmapData(mappings, jsonRoot.getAsJsonObject("mappings"));
+		// TODO do we even need to remap the data? Does mixin just always use `mappings`?
+		var data = jsonRoot.getAsJsonObject("data");
+		// TODO do we want to change the key to say "searge" too?
+		data.entrySet().forEach(entry -> remapRefmapData(mappings, entry.getValue().getAsJsonObject()));
+
+		try (var writer = Files.newBufferedWriter(newFile)) {
+			new Gson().toJson(jsonRoot, writer);
+			// Not sure why we have to call this ourselves but whatever
+			writer.flush();
 		}
-		while (true) {
-			var matcher = classPattern.matcher(data);
-			if (!matcher.find()) break;
-			var start = matcher.start();
-			var end = matcher.end();
-			var value = matcher.group();
-			// Hack to deal with Lnet.foo.Bar; class references since the regex grabs the L as well
-			if (value.startsWith("L")) {
-				start++;
-				value = value.substring(1);
+	}
+
+	private static void remapRefmapData(Mappings.SimpleMappingData mappings, JsonObject data) {
+		data.entrySet().forEach(classEntry -> {
+			if (classEntry.getValue().isJsonObject()) {
+				classEntry.getValue().getAsJsonObject().entrySet().forEach(entry -> {
+					var value = entry.getValue();
+					if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
+						entry.setValue(new JsonPrimitive(remapString(mappings, value.getAsString())));
+					}
+				});
 			}
-			data = data.substring(0, start) + mappings.classes().get(value) + data.substring(end);
+		});
+	}
+
+	private static String remapString(Mappings.SimpleMappingData mappings, String input) {
+		// TODO does this actually happen?
+		if (classPattern.matcher(input).find()) {
+			var mapped = mappings.classes().get(input);
+			return mapped != null ? mapped : input;
 		}
-		Files.write(newFile, data.getBytes());
+
+		while (true) {
+			var matcher = methodPattern.matcher(input);
+			if (!matcher.find()) break;
+			var start = matcher.start();
+			var end = matcher.end();
+			var value = matcher.group();
+			input = input.substring(0, start) + mappings.methods().get(value) + input.substring(end);
+		}
+		while (true) {
+			var matcher = fieldPattern.matcher(input);
+			if (!matcher.find()) break;
+			var start = matcher.start();
+			var end = matcher.end();
+			var value = matcher.group();
+			input = input.substring(0, start) + mappings.fields().get(value) + input.substring(end);
+		}
+		while (true) {
+			var matcher = classDescriptorPattern.matcher(input);
+			if (!matcher.find()) break;
+			var start = matcher.start();
+			var end = matcher.end();
+			var value = matcher.group();
+			input = input.substring(0, start) + mappings.classes().get(value) + input.substring(end);
+		}
+		return input;
 	}
 
 	private static byte[] generateDummyModClass(String className, String modid) {
