@@ -11,6 +11,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.google.common.base.Preconditions.checkArgument;
+
 // See: https://fabricmc.net/wiki/documentation:fabric_mod_json
 public class FabricModData {
 	public enum Side {
@@ -68,7 +70,7 @@ public class FabricModData {
 		var inner = element.getAsJsonPrimitive(key);
 		if (inner == null) return defaultValue;
 		// Error on wrong-type values, rather than ignoring them
-		assert inner.isString();
+		checkArgument(inner.isString(), "Expected value of type String for key %s", key);
 		return inner.getAsString();
 	}
 
