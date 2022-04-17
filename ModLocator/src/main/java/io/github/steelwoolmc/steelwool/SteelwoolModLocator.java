@@ -156,6 +156,7 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 	@Override
 	protected Optional<IModFile> createMod(Path... path) {
 		var mjm = ModIdHack.createModJarMetadata();
+		// TODO using our own metadata supplier might allow us to keep fabric.mod.json instead of translating beforehand?
 		var sj = SecureJar.from(
 				Manifest::new,
 				jar -> jar.findFile(MODS_TOML).isPresent() ? mjm : JarMetadata.from(jar, path),

@@ -23,8 +23,9 @@ apply plugin: 'maven-publish'
 configurations {
 	intermediary
 	mcpconfig
-	shade
-	implementation.extendsFrom shade
+//	shade
+//	implementation.extendsFrom shade
+	fabricloader
 }
 
 dependencies {
@@ -90,21 +91,9 @@ minecraft {
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
-	shade "net.fabricmc:fabric-loader:${fabric_loader_version}"
+	fabricloader "net.fabricmc:fabric-loader:${fabric_loader_version}"
+	implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
 //	implementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
-}
-
-// TODO find a cleaner way to only include the license and api package of fabric-loader
-shadowJar {
-	exclude "fabric*.json"
-	exclude "fabric.mod.json"
-	exclude "ui/**"
-	exclude "net/fabricmc/loader/**"
-	exclude "assets/fabricloader/**"
-	// TODO is there anything here from fabric-loader we want to keep?
-	// exclude fabric-loader's service providers
-	exclude "META-INF/services/*fabric**"
-	exclude "META-INF/services/*spongepowered**"
 }
 
 processResources {
@@ -132,11 +121,26 @@ jar {
 
 // Workaround for a bug in shadow. see: https://github.com/johnrengelman/shadow/issues/111#issuecomment-317233031
 // Shadow has no way to exclude jars from being unzipped, so we nest a jar inside another jar, so that it'll only unzip the outer one.
+// Since we're already doing this task anyway,
+// we also use it as an opportunity to filter fabric classes before everything gets mixed together in the shadowJar task (where using `include`s becomes more annoying)
 task shadowBugWorkaround(type: Jar) {
 	dependsOn project(":Mod").jar
 	// TODO exclude this from the build/libs directory?
-	archiveBaseName = "shadow_bug_workaround_ignore_this"
+	archiveBaseName = "shadow_stuff_ignore_this"
 	from project(":Mod").jar.archiveFile.get()
+
+	from (zipTree(project.configurations.fabricloader.singleFile)) {
+		include "LICENSE_*"
+		include "net/fabricmc/api/**"
+		include "net/fabricmc/loader/api/**"
+		exclude "net/fabricmc/loader/api/FabricLoader.class" // included in source so we can modify the file
+		include "net/fabricmc/loader/impl/util/version/VersionParser.class"
+		include "net/fabricmc/loader/impl/util/version/SemanticVersionImpl.class"
+		include "net/fabricmc/loader/util/version/SemanticVersionImpl.class"
+		include "net/fabricmc/loader/impl/util/version/VersionIntervalImpl.class"
+		include "net/fabricmc/loader/impl/util/version/VersionPredicateParser.class"
+		include "net/fabricmc/loader/impl/ObjectShareImpl.class"
+	}
 }
 
 shadowJar {
@@ -144,7 +148,7 @@ shadowJar {
 	from shadowBugWorkaround
 
 	archiveClassifier = ''
-	configurations = [project.configurations.shade]
+	configurations = [/*project.configurations.shade*/]
 	finalizedBy 'reobfShadowJar'
 }
 
