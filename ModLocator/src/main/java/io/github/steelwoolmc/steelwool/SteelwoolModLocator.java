@@ -196,7 +196,7 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 		var steelwoolFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT, Constants.MOD_CACHE_ROOT.toString());
 		var innerJarPath = steelwoolFolder.resolve(Constants.INNER_JAR_NAME);
 		// TODO caching
-		try (var stream = SteelwoolModLocator.class.getResourceAsStream("../../" + Constants.INNER_JAR_NAME)) {
+		try (var stream = SteelwoolModLocator.class.getResourceAsStream("../../../../" + Constants.INNER_JAR_NAME)) {
 			Files.copy(stream, innerJarPath, StandardCopyOption.REPLACE_EXISTING);
 		} catch (IOException e) {
 			e.printStackTrace();
