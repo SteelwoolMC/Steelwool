@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.github.steelwoolmc.steelwool.Constants;
 
+import javax.annotation.Nullable;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
@@ -45,6 +46,7 @@ public class FabricModData {
 	public final Side environment;
 	public final Map<String, List<Entrypoint>> entrypoints;
 	public final List<MixinConfig> mixins;
+	public final @Nullable String accessWidener;
 
 	// Metadata
 	public final String name;
@@ -54,12 +56,13 @@ public class FabricModData {
 	public final List<String> contributors;
 
 	private FabricModData(String id, String version, Side environment, Map<String, List<Entrypoint>> entrypoints, List<MixinConfig> mixins,
-						  String name, String description, List<String> authors, List<String> contributors) {
+						  @Nullable String accessWidener, String name, String description, List<String> authors, List<String> contributors) {
 		this.id = id;
 		this.version = version;
 		this.environment = environment;
 		this.entrypoints = entrypoints;
 		this.mixins = mixins;
+		this.accessWidener = accessWidener;
 		this.name = name;
 		this.description = description;
 		this.authors = authors;
@@ -77,6 +80,7 @@ public class FabricModData {
 	public static FabricModData readData(InputStream input) {
 		// We don't need 1:1 accuracy yet
 		// eventually we'll *probably* want to mimic fabric-loader's approach to parsing
+		// TODO just shade fabric-loader's parser instead?
 		var data = JsonParser.parseReader(new InputStreamReader(input)).getAsJsonObject();
 
 		var schemaVersionEntry = data.getAsJsonPrimitive("schemaVersion");
@@ -139,6 +143,8 @@ public class FabricModData {
 				}
 			});
 		}
+		String accessWidener = getStringOrDefault(data, "accessWidener", "");
+		if (accessWidener.isBlank()) accessWidener = null;
 
 		// Dependencies
 		// TODO
@@ -154,6 +160,6 @@ public class FabricModData {
 		// TODO icon
 
 		// TODO
-		return new FabricModData(id, version, environment, entrypoints, mixins, name, description, authors, contributors);
+		return new FabricModData(id, version, environment, entrypoints, mixins, accessWidener, name, description, authors, contributors);
 	}
 }

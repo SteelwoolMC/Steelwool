@@ -97,6 +97,8 @@ public class ModIdHack {
 				if (modFileInfo instanceof ModFileInfo) {
 					newFileInfo = new WrappedModFileInfo(((ModFileInfo) modFileInfo).getFile(), modFileInfo.getConfig(), List.of());
 				} else {
+					// TODO does this ever actually happen?
+					//      - if it does it could cause unexpected behaviour like ATs not applying
 					newFileInfo = new WrappedIModFileInfo(modFileInfo);
 				}
 

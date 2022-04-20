@@ -73,6 +73,10 @@ public class FabricToForgeConverter {
 		URI originalJarUri = new URI("jar:"+inputPath.toUri());
 		URI remappedJarUri = new URI("jar:"+outputPath.toUri());
 		try(var oldFs = FileSystems.newFileSystem(originalJarUri, Map.of()); var newFs = FileSystems.newFileSystem(remappedJarUri, Map.of("create", "true"))) {
+			var accessWidenerPath = fabricData.accessWidener != null ? oldFs.getPath(fabricData.accessWidener) : null;
+			var accessWidenerOutputPath = newFs.getPath("/META-INF/accesstransformer.cfg");
+			// Create META-INF immediately if it doesn't exist
+			Files.createDirectories(newFs.getPath("/META-INF"));
 			Files.walkFileTree(oldFs.getPath("/"), new SimpleFileVisitor<>() {
 				@Override
 				public FileVisitResult visitFile(Path oldFile, BasicFileAttributes attrs) throws IOException {
@@ -94,6 +98,8 @@ public class FabricToForgeConverter {
 						// TODO find refmap files from fabric json -> mixin configs -> refmaps, rather than using file names
 						// TODO do we need to change the "named:intermediary" key in the "data" element? afaik only the "mappings" element is used anyway?
 						remapRefmap(mappings, oldFile, newFile);
+					} else if (accessWidenerPath != null && Files.isSameFile(accessWidenerPath, oldFile)) {
+						convertAccessWidener(mappings, oldFile, accessWidenerOutputPath);
 					} else {
 						Files.copy(oldFile, newFile);
 					}
@@ -204,6 +210,93 @@ public class FabricToForgeConverter {
 				});
 			}
 		});
+	}
+
+	// TODO actually test this - really pretty much everything in this class needs actual tests written
+	//      also probably want to split conversion logic for specific file types into their own classes
+	private static void convertAccessWidener(Mappings.SimpleMappingData mappings, Path oldFile, Path newFile) throws IOException {
+		try (var reader = Files.newBufferedReader(oldFile)) {
+			var header = reader.readLine();
+			var headerParts = header.split("\\s+");
+			if (headerParts.length != 3 || !headerParts[0].equals("accessWidener")) {
+				// TODO maybe add config options for parsing strictness (fail vs. warn)
+				Constants.LOG.warn("Got invalid access widener header, converting it anyway!\n{}", header);
+			} else if (!headerParts[1].equals("v1")) {
+				Constants.LOG.warn("Got non-v1 access widener header, converting it as if it's v1 anyway!\n{}", header);
+			} else if (!headerParts[2].equals("intermediary")) {
+				Constants.LOG.warn("Got non-v1 access widener header, converting it anyway!\n{}", header);
+			}
+
+			// TODO option for whether or not to preserve comments?
+			var accessTransformerData = reader.lines().map(line -> {
+				String transformer;
+				String comment;
+				if (line.contains("#")) {
+					var parts = line.split("#", 1);
+					transformer = parts[0];
+					comment = "#" + parts[1];
+				} else {
+					transformer = line;
+					comment = "";
+				}
+
+				transformer = transformer.strip();
+				if (transformer.isEmpty()) {
+					return comment;
+				}
+
+				return convertAccessWidenerLine(mappings, transformer) + comment;
+			}).collect(Collectors.joining("\n"));
+			accessTransformerData = "# Converted from an AccessWidener by Steelwool\n" + accessTransformerData;
+			Files.write(newFile, accessTransformerData.getBytes());
+		}
+	}
+
+	private static String convertAccessWidenerLine(Mappings.SimpleMappingData mappings, String transformer) {
+		var parts = transformer.split("\\s+");
+		var className = remapString(mappings, parts[2]).replace("/", ".");
+		// TODO error handling for invalid lines
+		switch (parts[1]) {
+			case "class" -> {
+				switch (parts[0]) {
+					case "accessible" -> {
+						return String.format("public %s", className);
+					}
+					case "extendable" -> {
+						return String.format("public-f %s", className);
+					}
+				}
+			}
+			case "method" -> {
+				var methodName = remapString(mappings, parts[3]);
+				var methodDescriptor = remapString(mappings, parts[4]);
+				switch (parts[0]) {
+					case "accessible" -> {
+						// TODO do we care about adding final if the method is private?
+						return String.format("public %s %s%s", className, methodName, methodDescriptor);
+					}
+					case "extendable" -> {
+						// TODO do we care about making the method protected instead of public?
+						return String.format("public-f %s %s%s", className, methodName, methodDescriptor);
+					}
+				}
+			}
+			case "field" -> {
+				var fieldName = remapString(mappings, parts[3]);
+				var fieldDescriptor = remapString(mappings, parts[4]);
+				switch (parts[0]) {
+					case "accessible" -> {
+						return String.format("public %s %s", className, fieldName);
+					}
+					case "mutable" -> {
+						// TODO do we care about making the field also public?
+						return String.format("public-f %s %s", className, fieldName);
+					}
+				}
+			}
+		}
+		Constants.LOG.warn("Failed to convert access widener line: {}", transformer);
+		return "";
 	}
 
 	private static String remapString(Mappings.SimpleMappingData mappings, String input) {
