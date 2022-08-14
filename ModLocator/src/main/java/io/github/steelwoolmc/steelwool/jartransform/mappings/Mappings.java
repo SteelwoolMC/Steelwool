@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class Mappings {
@@ -184,5 +185,43 @@ public class Mappings {
 		@Override public String mapModuleName(String name) { return super.mapModuleName(name); }
 		@Override public String mapAnnotationAttributeName(String descriptor, String name) { return super.mapAnnotationAttributeName(descriptor, name); }
 		@Override public String mapInvokeDynamicMethodName(String name, String descriptor) { return super.mapInvokeDynamicMethodName(name, descriptor); }
+	}
+
+	private static final Pattern methodPattern = Pattern.compile("method_[0-9]+");
+	private static final Pattern fieldPattern = Pattern.compile("field_[0-9]+");
+	private static final Pattern classPattern = Pattern.compile("^[$/\\w]+class_[0-9]+$");
+	private static final Pattern classDescriptorPattern = Pattern.compile("(?<=L)[$/\\w]+?class_[0-9]+(?=;)");
+
+	public static String naiveRemapString(Mappings.SimpleMappingData mappings, String input) {
+		if (classPattern.matcher(input).find()) {
+			var mapped = mappings.classes().get(input);
+			return mapped != null ? mapped : input;
+		}
+
+		while (true) {
+			var matcher = methodPattern.matcher(input);
+			if (!matcher.find()) break;
+			var start = matcher.start();
+			var end = matcher.end();
+			var value = matcher.group();
+			input = input.substring(0, start) + mappings.methods().get(value) + input.substring(end);
+		}
+		while (true) {
+			var matcher = fieldPattern.matcher(input);
+			if (!matcher.find()) break;
+			var start = matcher.start();
+			var end = matcher.end();
+			var value = matcher.group();
+			input = input.substring(0, start) + mappings.fields().get(value) + input.substring(end);
+		}
+		while (true) {
+			var matcher = classDescriptorPattern.matcher(input);
+			if (!matcher.find()) break;
+			var start = matcher.start();
+			var end = matcher.end();
+			var value = matcher.group();
+			input = input.substring(0, start) + mappings.classes().get(value) + input.substring(end);
+		}
+		return input;
 	}
 }

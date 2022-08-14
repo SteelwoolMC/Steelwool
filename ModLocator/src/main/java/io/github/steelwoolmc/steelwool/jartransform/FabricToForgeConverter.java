@@ -27,16 +27,15 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.jar.Manifest;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class FabricToForgeConverter {
 	// TODO multithreading for jar conversion? I'm not sure how slow it'll end up being once we can actually handle large/many mods
-	public static List<Path> getConvertedJarPaths(List<ModCandidate> modCandidates) {
-		var mappings = Mappings.getSimpleMappingData();
+	public static List<Path> getConvertedJarPaths(List<ModCandidate> modCandidates, Mappings.SimpleMappingData mappings) {
 		var remapper = new Mappings.SteelwoolRemapper(mappings);
 
 		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT.resolve("mods"), Constants.MOD_ID+"/mods");
@@ -175,11 +174,6 @@ public class FabricToForgeConverter {
 		}
 	}
 
-	private static final Pattern methodPattern = Pattern.compile("method_[0-9]+");
-	private static final Pattern fieldPattern = Pattern.compile("field_[0-9]+");
-	private static final Pattern classPattern = Pattern.compile("^[$/\\w]+class_[0-9]+$");
-	private static final Pattern classDescriptorPattern = Pattern.compile("(?<=L)[$/\\w]+?class_[0-9]+(?=;)");
-
 	private static void remapRefmap(Mappings.SimpleMappingData mappings, Path oldFile, Path newFile) throws IOException {
 		JsonObject jsonRoot;
 		try (var reader = Files.newBufferedReader(oldFile)) {
@@ -205,7 +199,7 @@ public class FabricToForgeConverter {
 				classEntry.getValue().getAsJsonObject().entrySet().forEach(entry -> {
 					var value = entry.getValue();
 					if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
-						entry.setValue(new JsonPrimitive(remapString(mappings, value.getAsString())));
+						entry.setValue(new JsonPrimitive(Mappings.naiveRemapString(mappings, value.getAsString())));
 					}
 				});
 			}
@@ -223,6 +217,7 @@ public class FabricToForgeConverter {
 				Constants.LOG.warn("Got invalid access widener header, converting it anyway!\n{}", header);
 			} else if (!headerParts[1].equals("v1")) {
 				Constants.LOG.warn("Got non-v1 access widener header, converting it as if it's v1 anyway!\n{}", header);
+			// TODO is it `intermediary` or `named`? fabric-api has `named`
 			} else if (!headerParts[2].equals("intermediary")) {
 				Constants.LOG.warn("Got non-v1 access widener header, converting it anyway!\n{}", header);
 			}
@@ -231,10 +226,10 @@ public class FabricToForgeConverter {
 			var accessTransformerData = reader.lines().map(line -> {
 				String transformer;
 				String comment;
-				if (line.contains("#")) {
-					var parts = line.split("#", 1);
-					transformer = parts[0];
-					comment = "#" + parts[1];
+				var index = line.indexOf("#");
+				if (index >= 0) {
+					transformer = line.substring(0, index);
+					comment = line.substring(index);
 				} else {
 					transformer = line;
 					comment = "";
@@ -254,7 +249,7 @@ public class FabricToForgeConverter {
 
 	private static String convertAccessWidenerLine(Mappings.SimpleMappingData mappings, String transformer) {
 		var parts = transformer.split("\\s+");
-		var className = remapString(mappings, parts[2]).replace("/", ".");
+		var className = Mappings.naiveRemapString(mappings, parts[2]).replace("/", ".");
 		// TODO error handling for invalid lines
 		switch (parts[1]) {
 			case "class" -> {
@@ -268,8 +263,8 @@ public class FabricToForgeConverter {
 				}
 			}
 			case "method" -> {
-				var methodName = remapString(mappings, parts[3]);
-				var methodDescriptor = remapString(mappings, parts[4]);
+				var methodName = Mappings.naiveRemapString(mappings, parts[3]);
+				var methodDescriptor = Mappings.naiveRemapString(mappings, parts[4]);
 				switch (parts[0]) {
 					case "accessible" -> {
 						// TODO do we care about adding final if the method is private?
@@ -282,8 +277,8 @@ public class FabricToForgeConverter {
 				}
 			}
 			case "field" -> {
-				var fieldName = remapString(mappings, parts[3]);
-				var fieldDescriptor = remapString(mappings, parts[4]);
+				var fieldName = Mappings.naiveRemapString(mappings, parts[3]);
+				var fieldDescriptor = Mappings.naiveRemapString(mappings, parts[4]);
 				switch (parts[0]) {
 					case "accessible" -> {
 						return String.format("public %s %s", className, fieldName);
@@ -297,40 +292,6 @@ public class FabricToForgeConverter {
 		}
 		Constants.LOG.warn("Failed to convert access widener line: {}", transformer);
 		return "";
-	}
-
-	private static String remapString(Mappings.SimpleMappingData mappings, String input) {
-		// TODO does this actually happen?
-		if (classPattern.matcher(input).find()) {
-			var mapped = mappings.classes().get(input);
-			return mapped != null ? mapped : input;
-		}
-
-		while (true) {
-			var matcher = methodPattern.matcher(input);
-			if (!matcher.find()) break;
-			var start = matcher.start();
-			var end = matcher.end();
-			var value = matcher.group();
-			input = input.substring(0, start) + mappings.methods().get(value) + input.substring(end);
-		}
-		while (true) {
-			var matcher = fieldPattern.matcher(input);
-			if (!matcher.find()) break;
-			var start = matcher.start();
-			var end = matcher.end();
-			var value = matcher.group();
-			input = input.substring(0, start) + mappings.fields().get(value) + input.substring(end);
-		}
-		while (true) {
-			var matcher = classDescriptorPattern.matcher(input);
-			if (!matcher.find()) break;
-			var start = matcher.start();
-			var end = matcher.end();
-			var value = matcher.group();
-			input = input.substring(0, start) + mappings.classes().get(value) + input.substring(end);
-		}
-		return input;
 	}
 
 	private static byte[] generateDummyModClass(String className, String modid) {

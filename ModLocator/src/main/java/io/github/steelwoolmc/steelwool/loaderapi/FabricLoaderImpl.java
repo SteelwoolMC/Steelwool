@@ -1,5 +1,6 @@
 package io.github.steelwoolmc.steelwool.loaderapi;
 
+import io.github.steelwoolmc.steelwool.jartransform.mappings.Mappings;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.MappingResolver;
@@ -13,25 +14,39 @@ import net.minecraftforge.fml.loading.FMLPaths;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
 public class FabricLoaderImpl implements FabricLoader {
-	public static final FabricLoaderImpl INSTANCE = new FabricLoaderImpl();
+	public static FabricLoaderImpl INSTANCE;
+
+	private final MappingResolverImpl mappingResolver;
+
+	public FabricLoaderImpl(Mappings.SimpleMappingData mappingData) {
+		if (INSTANCE != null) {
+			throw new IllegalStateException("Attempted to instantiate FabricLoaderImpl multiple times. This shouldn't happen!");
+		}
+		mappingResolver = new MappingResolverImpl(mappingData);
+		INSTANCE = this;
+	}
 
 	// TODO fabric's impl class is non-public
 //	private final ObjectShare objectShare = new ObjectShareImpl();
 
+	// TODO method stub
 	@Override
 	public <T> List<T> getEntrypoints(String key, Class<T> type) {
 		return null;
 	}
 
+	// TODO method stub
 	@Override
 	public <T> List<EntrypointContainer<T>> getEntrypointContainers(String key, Class<T> type) {
 		return null;
 	}
 
+	// TODO method stub
 	@Override
 	public ObjectShare getObjectShare() {
 //		return objectShare;
@@ -40,17 +55,19 @@ public class FabricLoaderImpl implements FabricLoader {
 
 	@Override
 	public MappingResolver getMappingResolver() {
-		return null;
+		return mappingResolver;
 	}
 
+	// TODO method stub
 	@Override
 	public Optional<ModContainer> getModContainer(String id) {
 		return Optional.empty();
 	}
 
+	// TODO method stub
 	@Override
 	public Collection<ModContainer> getAllMods() {
-		return null;
+		return Collections.EMPTY_SET;
 	}
 
 	@Override
@@ -95,7 +112,7 @@ public class FabricLoaderImpl implements FabricLoader {
 		return getConfigDir().toFile();
 	}
 
-	// TODO
+	// TODO method stub
 	@Override
 	public String[] getLaunchArguments(boolean sanitize) {
 		return new String[0];

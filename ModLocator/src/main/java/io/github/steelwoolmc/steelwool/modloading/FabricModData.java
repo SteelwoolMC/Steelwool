@@ -38,6 +38,9 @@ public class FabricModData {
 
 	public static record MixinConfig(String config, Side environment) {}
 
+	/** Whether this mod was loaded from a nested jar */
+	public final boolean isNested;
+
 	// Mandatory fields
 	public final String id;
 	public final String version;
@@ -45,6 +48,7 @@ public class FabricModData {
 	// Mod loading data
 	public final Side environment;
 	public final Map<String, List<Entrypoint>> entrypoints;
+	public final List<String> nestedJars;
 	public final List<MixinConfig> mixins;
 	public final @Nullable String accessWidener;
 
@@ -55,12 +59,14 @@ public class FabricModData {
 	public final List<String> authors;
 	public final List<String> contributors;
 
-	private FabricModData(String id, String version, Side environment, Map<String, List<Entrypoint>> entrypoints, List<MixinConfig> mixins,
-						  @Nullable String accessWidener, String name, String description, List<String> authors, List<String> contributors) {
+	private FabricModData(boolean isNested, String id, String version, Side environment, Map<String, List<Entrypoint>> entrypoints, List<String> nestedJars,
+						  List<MixinConfig> mixins, @Nullable String accessWidener, String name, String description, List<String> authors, List<String> contributors) {
+		this.isNested = isNested;
 		this.id = id;
 		this.version = version;
 		this.environment = environment;
 		this.entrypoints = entrypoints;
+		this.nestedJars = nestedJars;
 		this.mixins = mixins;
 		this.accessWidener = accessWidener;
 		this.name = name;
@@ -77,7 +83,7 @@ public class FabricModData {
 		return inner.getAsString();
 	}
 
-	public static FabricModData readData(InputStream input) {
+	public static FabricModData readData(InputStream input, boolean isNested) {
 		// We don't need 1:1 accuracy yet
 		// eventually we'll *probably* want to mimic fabric-loader's approach to parsing
 		// TODO just shade fabric-loader's parser instead?
@@ -121,7 +127,18 @@ public class FabricModData {
 				entrypoints.put(key, outputArray);
 			});
 		}
-//		List<NestedJar> nestedJars = new ArrayList<>(); // TODO nested jars
+		List<String> nestedJars = new ArrayList<>(); // TODO nested jars
+		var nestedJarData = data.getAsJsonArray("jars");
+		if (nestedJarData != null) {
+			nestedJarData.forEach(nestedJarEntry -> {
+				if (nestedJarEntry.isJsonObject()) {
+					var file = nestedJarEntry.getAsJsonObject().getAsJsonPrimitive("file");
+					if (file.isString()) {
+						nestedJars.add(file.getAsString());
+					}
+				}
+			});
+		}
 		// TODO language adapters?
 		List<MixinConfig> mixins = new ArrayList<>();
 		var mixinData = data.getAsJsonArray("mixins");
@@ -160,6 +177,6 @@ public class FabricModData {
 		// TODO icon
 
 		// TODO
-		return new FabricModData(id, version, environment, entrypoints, mixins, accessWidener, name, description, authors, contributors);
+		return new FabricModData(isNested, id, version, environment, entrypoints, nestedJars, mixins, accessWidener, name, description, authors, contributors);
 	}
 }

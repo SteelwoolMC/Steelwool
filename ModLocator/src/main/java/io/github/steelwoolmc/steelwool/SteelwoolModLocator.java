@@ -3,6 +3,8 @@ package io.github.steelwoolmc.steelwool;
 import cpw.mods.jarhandling.JarMetadata;
 import cpw.mods.jarhandling.SecureJar;
 import io.github.steelwoolmc.steelwool.jartransform.FabricToForgeConverter;
+import io.github.steelwoolmc.steelwool.jartransform.mappings.Mappings;
+import io.github.steelwoolmc.steelwool.loaderapi.FabricLoaderImpl;
 import io.github.steelwoolmc.steelwool.modloading.EntrypointsData;
 import io.github.steelwoolmc.steelwool.modloading.FabricModData;
 import io.github.steelwoolmc.steelwool.modloading.ModCandidate;
@@ -14,7 +16,7 @@ import net.minecraftforge.fml.loading.moddiscovery.AbstractJarFileLocator;
 import net.minecraftforge.fml.loading.moddiscovery.ModFileParser;
 import net.minecraftforge.forgespi.locating.IModFile;
 
-import javax.annotation.Nullable;
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,11 +34,34 @@ import java.util.zip.ZipFile;
 
 public class SteelwoolModLocator extends AbstractJarFileLocator {
 	private final Path modFolder;
+	private final Path nestedJarFolder;
 	private final EntrypointsData entrypoints = EntrypointsData.createInstance();
+
+	private final Mappings.SimpleMappingData mappings;
 
 	public SteelwoolModLocator() {
 		this.modFolder = FMLPaths.MODSDIR.get();
+		this.nestedJarFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT.resolve("jij"), Constants.MOD_ID+"/jij");
+		// Delete all existing JiJ files
+		// FIXME only do this for dev versions; we want caching for release - figure out how to do caching properly though
+		// FIXME don't do this *here*
+		try {
+			Files.walk(nestedJarFolder).forEach(path -> {
+				// Don't delete the root folder, just the contents
+				if (path.equals(nestedJarFolder)) return;
+				try {
+					Files.deleteIfExists(path);
+				} catch (IOException ignored) {}
+			});
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
 		Constants.LOG.info("SteelWool mod locator instantiated. Hi Forge :)");
+
+		mappings = Mappings.getSimpleMappingData();
+		new FabricLoaderImpl(mappings);
+
 		ModIdHack.makeForgeAcceptDashesInModids();
 	}
 
@@ -71,22 +96,21 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 			mods = List.of();
 		}
 
-		var modCandidates = new ArrayList<ModCandidate>();
-		for (var mod : mods) {
-			var cand = getModCandidate(mod);
-			if (cand != null) {
-				modCandidates.add(cand);
-				cand.metadata().entrypoints.forEach((prototype, entrypoints) -> {
-					entrypoints.forEach(entrypoint -> {
-						this.entrypoints.addEntrypoint(prototype, entrypoint);
-					});
+		// FIXME dependency resolution; the same dependency could be nested in multiple different jars
+		// TODO make forge treat the nested jars as child mods? at least in the case of Gambeson
+		var modCandidates = mods.stream().map(path -> getModCandidates(path, false)).flatMap(List::stream).collect(Collectors.toList());
+		// FIXME we shouldn't be doing entrypoints here
+		modCandidates.forEach(cand -> {
+			cand.metadata().entrypoints.forEach((prototype, entrypoints) -> {
+				entrypoints.forEach(entrypoint -> {
+					this.entrypoints.addEntrypoint(prototype, entrypoint);
 				});
-			}
-		}
+			});
+		});
 
 		Constants.LOG.info("Found {} fabric mod candidates", modCandidates.size());
 
-		var outputJars = FabricToForgeConverter.getConvertedJarPaths(modCandidates);
+		var outputJars = FabricToForgeConverter.getConvertedJarPaths(modCandidates, mappings);
 		// Add our own internal mod here so that it gets loaded
 		outputJars.add(0, getInternalMod());
 		return outputJars.stream();
@@ -113,21 +137,21 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 	 * Checks whether a mod jar contains a fabric mod, but no forge mod (to avoid double-loading of universal jars)
 	 */
 	// TODO some fabric mods may include a dummy mods.toml to warn forge users; we don't want to skip those
-	private static @Nullable ModCandidate getModCandidate(Path path) {
+	private List<ModCandidate> getModCandidates(Path path, boolean isNested) {
 		try (ZipFile zf = new ZipFile(path.toFile())) {
 			var forgeToml = zf.getEntry("META-INF/mods.toml");
 			if (forgeToml != null) {
 				System.out.println("FOUND FORGE TOML for path " + path);
-				return null;
+				return List.of();
 			}
 			var fabricJson = zf.getEntry("fabric.mod.json");
-			if (fabricJson == null) return null;
+			if (fabricJson == null) return List.of();
 			System.out.println("FOUND FABRIC MOD JSON for path " + path);
 
 			FabricModData data;
 
-			try (var is = zf.getInputStream(fabricJson)) {
-				data = FabricModData.readData(is);
+			try (var is = new BufferedInputStream(zf.getInputStream(fabricJson))) {
+				data = FabricModData.readData(is, isNested);
 			}
 
 			System.out.println("got fabric data!");
@@ -135,17 +159,36 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 
 			if (data.environment != FabricModData.Side.BOTH && (data.environment == FabricModData.Side.CLIENT) != FMLEnvironment.dist.isClient()) {
 				// We're on the wrong side for this mod; don't try to load it
-				return null;
+				// TODO should nested jars be loaded in this case? probably not?
+				return List.of();
 			}
 
-			return new ModCandidate(path, data);
+			// TODO can we use streams instead of lists? caused issues when I tried due to zip files closing before lambda evaluation
+			var list = new ArrayList<ModCandidate>();
+			list.add(new ModCandidate(path, data));
 
-			// TODO nested jar handling - see https://github.com/FabricMC/fabric-loader/blob/ccacc836e96887c534e26731eba6bd04bc358a11/src/main/java/net/fabricmc/loader/impl/discovery/ModDiscoverer.java#L283-L345
+			list.addAll(data.nestedJars.stream().map(nestedJarPath -> {
+				try (var is = new BufferedInputStream(zf.getInputStream(zf.getEntry(nestedJarPath)))) {
+					var outputPath = nestedJarFolder.resolve(Path.of(nestedJarPath).getFileName());
+					// FIXME this could cause issues with duplicate nested mods overwriting each other
+					//       - how does fabric-loader avoid extracting the jars?
+					if (!Files.exists(outputPath))
+						Files.copy(is, outputPath);
+					else {
+						Constants.LOG.warn("duplicate extracted nested jar {}", outputPath);
+					}
+					return getModCandidates(outputPath, true);
+				} catch (IOException e) {
+					// TODO better error handling
+					throw new RuntimeException("Error while handling nested jar", e);
+				}
+			}).flatMap(List::stream).collect(Collectors.toList()));
+			return list;
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 
-		return null; //TODO
+		return List.of(); //TODO
 	}
 
 	/**
