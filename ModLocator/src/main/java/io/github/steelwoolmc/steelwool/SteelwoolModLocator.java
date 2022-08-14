@@ -13,6 +13,7 @@ import net.minecraftforge.fml.loading.FMLPaths;
 import net.minecraftforge.fml.loading.ModDirTransformerDiscoverer;
 import net.minecraftforge.fml.loading.StringUtils;
 import net.minecraftforge.fml.loading.moddiscovery.AbstractJarFileLocator;
+import net.minecraftforge.fml.loading.moddiscovery.AbstractJarFileModLocator;
 import net.minecraftforge.fml.loading.moddiscovery.ModFileParser;
 import net.minecraftforge.forgespi.locating.IModFile;
 import net.minecraftforge.forgespi.locating.IModLocator;
@@ -36,7 +37,7 @@ import java.util.zip.ZipFile;
 /**
  * {@link IModLocator} implementation that finds Fabric mods in the mods directory, transforms them into Forge mods, and provides the transformed jars to Forge
  */
-public class SteelwoolModLocator extends AbstractJarFileLocator {
+public class SteelwoolModLocator extends AbstractJarFileModLocator {
 	private final Path modFolder;
 	private final Path nestedJarFolder;
 	private final EntrypointsData entrypoints = EntrypointsData.createInstance();
@@ -237,12 +238,6 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 		for (var key : arguments.keySet()) {
 			System.out.println("key = " + key + ", value = " + arguments.get(key));
 		}
-	}
-
-	@Override
-	public boolean isValid(IModFile modFile) {
-		// TODO validate any mods that we give to forge - forge's implementations of IModLocator seem to just `return true;`?
-		return true;
 	}
 
 	/**
