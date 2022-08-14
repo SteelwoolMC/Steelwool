@@ -19,12 +19,31 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+/**
+ * Helper class for handling mapping between intermediary and TSRG
+ *
+ * <p>Note that we include intermediary->TSRG data in the mod jar, however TSRG uses official Mojang class names at runtime;
+ * to comply with the license we have to download the official mappings at runtime on first launch and remap the class name mapping data.</p>
+ */
 public class Mappings {
 	// TODO get game version instead of doing this
 	private static final String TARGET_VERSION = "1.18.2";
 
-	public static record SimpleMappingData(HashMap<String, String> classes, HashMap<String, String> methods, HashMap<String, String> fields) {}
+	/**
+	 * Record containing class, method, and field mappings from intermediary to TSRG
+	 * <b>Important:</b> we do not keep track of what classes own each method/field; we are relying on method/field names being unique across all classes
+	 * (which should be the case for both intermediary and TSRG)
+	 * @param classes map from intermediary class names to TSRG class names
+	 * @param methods map from intermediary method names to TSRG method names
+	 * @param fields map from intermediary field names to TSRG field names
+	 */
+	public record SimpleMappingData(HashMap<String, String> classes, HashMap<String, String> methods, HashMap<String, String> fields) {}
 
+	/**
+	 * Load {@link SimpleMappingData} from a tiny-format intermediary->TSRG mapping file
+	 * @param file the path of the mapping file to load
+	 * @return the loaded mapping data
+	 */
 	private static SimpleMappingData simpleMappings(Path file) throws IOException {
 		var classes = new HashMap<String, String>();
 		var methods = new HashMap<String, String>();
@@ -47,6 +66,10 @@ public class Mappings {
 		return new SimpleMappingData(classes, methods, fields);
 	}
 
+	/**
+	 * Get the intermediary->TSRG mapping data for the current minecraft version, downloading and generating it if necessary.
+	 * @return the mapping data for the current minecraft version
+	 */
 	public static SimpleMappingData getSimpleMappingData() {
 		// TODO check minecraft version of existing file, somehow - put the version in the filename maybe?
 		//      maybe have a mappings folder and have files for each MC version
@@ -69,6 +92,12 @@ public class Mappings {
 		}
 	}
 
+	// TODO what do we do if the user doesn't have an internet connection and we don't have mapping data?
+	//      probably want to fail more gracefully instead of crashing
+	/**
+	 * Download the official Mojang classnames and apply them to the intermediary->TSRG data embedded in the mod jar
+	 * @param outputFile the file to write the remapped mapping data to
+	 */
 	private static void applyMojangClassNames(Path outputFile) {
 		try {
 			var url = new URL("https://launchermeta.mojang.com/mc/game/version_manifest.json");
@@ -117,6 +146,11 @@ public class Mappings {
 		}
 	}
 
+	/**
+	 * Download the official Mojang mappings, and extract the class name data
+	 * @param url the URL to download the mapping data from
+	 * @return a map of obfuscated class names to official class names
+	 */
 	private static Map<String, String> getMojangClassMappings(URL url) throws IOException {
 		try (var stream = url.openStream()) {
 			return new BufferedReader(new InputStreamReader(stream))
@@ -133,6 +167,9 @@ public class Mappings {
 		}
 	}
 
+	/**
+	 * ASM remapper class for remapping mod classes from intermediary to TSRG
+	 */
 	public static class SteelwoolRemapper extends Remapper {
 		private final SimpleMappingData mappings;
 
@@ -192,12 +229,22 @@ public class Mappings {
 	private static final Pattern classPattern = Pattern.compile("^[$/\\w]+class_[0-9]+$");
 	private static final Pattern classDescriptorPattern = Pattern.compile("(?<=L)[$/\\w]+?class_[0-9]+(?=;)");
 
+	/**
+	 * Naively remap an arbitrary string containing methods/fields/classes from intermediary to TSRG
+	 * - this makes several assumptions about the format of the input (TODO document these assumptions)
+	 * @param mappings the intermediary->TSRG mapping data
+	 * @param input the string to be remapped
+	 * @return the remapped string, or the original string if it could not be remapped
+	 */
+	// TODO this has huge room for optimization
 	public static String naiveRemapString(Mappings.SimpleMappingData mappings, String input) {
+		// If the string is exactly an intermediary class name we remap it
 		if (classPattern.matcher(input).find()) {
 			var mapped = mappings.classes().get(input);
 			return mapped != null ? mapped : input;
 		}
 
+		// Otherwise we remap any methods/fields or class descriptors found in the string
 		while (true) {
 			var matcher = methodPattern.matcher(input);
 			if (!matcher.find()) break;

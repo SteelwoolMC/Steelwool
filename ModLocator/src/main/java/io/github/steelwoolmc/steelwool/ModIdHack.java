@@ -80,6 +80,9 @@ public class ModIdHack {
 		}
 	}
 
+	/**
+	 * Wrapper around {@link ModFile} to replace its {@link ModFileInfo} with {@link WrappedModFileInfo}
+	 */
 	static class WrappedModFile extends ModFile {
 		public WrappedModFile(SecureJar jar, IModLocator locator, ModFileFactory.ModFileInfoParser parser) {
 			super(jar, locator, parser);
@@ -110,6 +113,9 @@ public class ModIdHack {
 		}
 	}
 
+	/**
+	 * Wrapper around {@link ModFileInfo} to prevent invalid module names by replacing any {@code -} with {@code _}
+	 */
 	private static class WrappedModFileInfo extends ModFileInfo {
 		private WrappedModFileInfo(ModFile file, IConfigurable config, List<LanguageSpec> languageSpecs) {
 			super(file, config, languageSpecs);
@@ -118,6 +124,9 @@ public class ModIdHack {
 		@Override public String moduleName() { return super.moduleName().replace("-", "_"); }
 	}
 
+	/**
+	 * Wrapper around {@link IModFileInfo} to prevent invalid module names by replacing any {@code -} with {@code _}
+	 */
 	private record WrappedIModFileInfo(IModFileInfo inner) implements IModFileInfo {
 		@Override public List<IModInfo> getMods() { return inner.getMods(); }
 

@@ -14,7 +14,11 @@ import java.util.Map;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
-// See: https://fabricmc.net/wiki/documentation:fabric_mod_json
+/**
+ * Class representing the Fabric mod metadata for a mod
+ *
+ * @see <a href="https://fabricmc.net/wiki/documentation:fabric_mod_json">FabricMC mod json documentation</a>
+ */
 public class FabricModData {
 	public enum Side {
 		CLIENT, SERVER, BOTH;
@@ -34,9 +38,9 @@ public class FabricModData {
 		}
 	}
 
-	public static record Entrypoint(String adapter, String value) {}
+	public record Entrypoint(String adapter, String value) {}
 
-	public static record MixinConfig(String config, Side environment) {}
+	public record MixinConfig(String config, Side environment) {}
 
 	/** Whether this mod was loaded from a nested jar */
 	public final boolean isNested;

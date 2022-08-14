@@ -18,6 +18,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * A reimplementation of FabricLoader's API, used to provide the API to Fabric mods running on Forge
+ */
 public class FabricLoaderImpl implements FabricLoader {
 	public static FabricLoaderImpl INSTANCE;
 

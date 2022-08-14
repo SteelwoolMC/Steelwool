@@ -33,8 +33,18 @@ import java.util.Map;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 
+/**
+ * Class for converting Fabric mod jars to mod jars that can be loaded by Forge
+ */
 public class FabricToForgeConverter {
 	// TODO multithreading for jar conversion? I'm not sure how slow it'll end up being once we can actually handle large/many mods
+
+	/**
+	 * Given a list of {@link ModCandidate}s, convert the mod jars from Fabric to Forge and return a list of Forge jar paths
+	 * @param modCandidates the ModCandidates to be transformed
+	 * @param mappings the intermediary->TSRG mapping data
+	 * @return a list of Forge jar paths
+	 */
 	public static List<Path> getConvertedJarPaths(List<ModCandidate> modCandidates, Mappings.SimpleMappingData mappings) {
 		var remapper = new Mappings.SteelwoolRemapper(mappings);
 
@@ -68,6 +78,14 @@ public class FabricToForgeConverter {
 		return outputJars;
 	}
 
+	/**
+	 * Transform a Fabric mod jar into a Forge mod jar
+	 * @param inputPath the path of the fabric mod jar
+	 * @param outputPath the path to create the forge mod jar
+	 * @param mappings the intermediary->TSRG mapping data
+	 * @param remapper the ASM remapper to be used for remapping mod classes
+	 * @param fabricData the fabric mod metadata of the mod
+	 */
 	private static void transformJar(Path inputPath, Path outputPath, Mappings.SimpleMappingData mappings, Remapper remapper, FabricModData fabricData) throws URISyntaxException, IOException {
 		URI originalJarUri = new URI("jar:"+inputPath.toUri());
 		URI remappedJarUri = new URI("jar:"+outputPath.toUri());
@@ -122,6 +140,11 @@ public class FabricToForgeConverter {
 		}
 	}
 
+	/**
+	 * Generate the Forge mod metadata for a mod, from its Fabric mod metadata
+	 * @param fabricData the fabric mod metadata
+	 * @return the forge mod metadata, as a {@link Config}
+	 */
 	private static Config generateForgeMetadata(FabricModData fabricData) {
 		// TODO do we care about side effects from always setting this and not resetting it afterwards?
 		// why is this a global property anyway? seems kinda janky
@@ -146,6 +169,13 @@ public class FabricToForgeConverter {
 		return config;
 	}
 
+	/**
+	 * Modify the jar manifest data of a converted mod jar
+	 *
+	 * <p>Updates the mixin config path, and adds a marker to indicate that the jar was transformed by Steelwool</p>
+	 * @param manifestPath the path of the manifest to modify
+	 * @param fabricData the fabric mod metadata of the mod
+	 */
 	private static void updateManifest(Path manifestPath, FabricModData fabricData) throws IOException {
 		Manifest manifest;
 
@@ -174,6 +204,12 @@ public class FabricToForgeConverter {
 		}
 	}
 
+	/**
+	 * Remap a Mixin refmap file from (named->intermediary) to (named->TSRG)
+	 * @param mappings the intermediary->TSRG mapping data
+	 * @param oldFile the path of the original refmap file
+	 * @param newFile the path to create the remapped refmap file
+	 */
 	private static void remapRefmap(Mappings.SimpleMappingData mappings, Path oldFile, Path newFile) throws IOException {
 		JsonObject jsonRoot;
 		try (var reader = Files.newBufferedReader(oldFile)) {
@@ -193,6 +229,11 @@ public class FabricToForgeConverter {
 		}
 	}
 
+	/**
+	 * Remap the mapping data within a Mixin refmap, from (named->intermediary) to (named->TSRG)
+	 * @param mappings the intermediary->TSRG mapping data
+	 * @param data the refmap data to modify in-place
+	 */
 	private static void remapRefmapData(Mappings.SimpleMappingData mappings, JsonObject data) {
 		data.entrySet().forEach(classEntry -> {
 			if (classEntry.getValue().isJsonObject()) {
@@ -208,6 +249,13 @@ public class FabricToForgeConverter {
 
 	// TODO actually test this - really pretty much everything in this class needs actual tests written
 	//      also probably want to split conversion logic for specific file types into their own classes
+
+	/**
+	 * Convert an access widener file to an equivalent access transformer file
+	 * @param mappings the intermediary->TSRG mapping data
+	 * @param oldFile the access widener file to read
+	 * @param newFile the path to create the access transformer file
+	 */
 	private static void convertAccessWidener(Mappings.SimpleMappingData mappings, Path oldFile, Path newFile) throws IOException {
 		try (var reader = Files.newBufferedReader(oldFile)) {
 			var header = reader.readLine();
@@ -247,6 +295,12 @@ public class FabricToForgeConverter {
 		}
 	}
 
+	/**
+	 * Convert a single access widener entry to an equivalent access transformer
+	 * @param mappings the intermediary->TSRG mapping data
+	 * @param transformer the access widener to be transformed
+	 * @return the equivalent access transformer
+	 */
 	private static String convertAccessWidenerLine(Mappings.SimpleMappingData mappings, String transformer) {
 		var parts = transformer.split("\\s+");
 		var className = Mappings.naiveRemapString(mappings, parts[2]).replace("/", ".");
@@ -294,6 +348,12 @@ public class FabricToForgeConverter {
 		return "";
 	}
 
+	/**
+	 * Generate a dummy mod class, as Forge requires mods to have a main class annotated with {@link net.minecraftforge.fml.common.Mod} in order to load them
+	 * @param className the name of the class to be generated
+	 * @param modid the id of the mod
+	 * @return the generated dummy class bytecode as a byte array
+	 */
 	private static byte[] generateDummyModClass(String className, String modid) {
 		var cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
 		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null);

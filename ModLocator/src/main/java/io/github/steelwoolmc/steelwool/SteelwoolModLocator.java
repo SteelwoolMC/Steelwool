@@ -15,6 +15,7 @@ import net.minecraftforge.fml.loading.StringUtils;
 import net.minecraftforge.fml.loading.moddiscovery.AbstractJarFileLocator;
 import net.minecraftforge.fml.loading.moddiscovery.ModFileParser;
 import net.minecraftforge.forgespi.locating.IModFile;
+import net.minecraftforge.forgespi.locating.IModLocator;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -32,6 +33,9 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipFile;
 
+/**
+ * {@link IModLocator} implementation that finds Fabric mods in the mods directory, transforms them into Forge mods, and provides the transformed jars to Forge
+ */
 public class SteelwoolModLocator extends AbstractJarFileLocator {
 	private final Path modFolder;
 	private final Path nestedJarFolder;
@@ -117,6 +121,12 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 	}
 
 	// We use the same initial jar-checking logic as fabric loader, for consistency
+
+	/**
+	 * Check whether an arbitrary file path is a valid jar file path
+	 * @param path the file path to check
+	 * @return whether the file path is a valid jar file path
+	 */
 	private static boolean isValidJar(Path path) {
 		if (!Files.isRegularFile(path)) return false;
 		try {
@@ -134,9 +144,10 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 	/**
 	 * Get a mod candidate for a jar path.
 	 *
-	 * Checks whether a mod jar contains a fabric mod, but no forge mod (to avoid double-loading of universal jars)
+	 * <p>Checks whether a mod jar contains a fabric mod, but no forge mod (to avoid double-loading of universal jars)</p>
 	 */
 	// TODO some fabric mods may include a dummy mods.toml to warn forge users; we don't want to skip those
+	// FIXME this needs to be reworked to handle nested jars properly
 	private List<ModCandidate> getModCandidates(Path path, boolean isNested) {
 		try (ZipFile zf = new ZipFile(path.toFile())) {
 			var forgeToml = zf.getEntry("META-INF/mods.toml");
@@ -234,6 +245,10 @@ public class SteelwoolModLocator extends AbstractJarFileLocator {
 		return true;
 	}
 
+	/**
+	 * Extract the internal Steelwool mod jar nested within the main jar
+	 * @return the path of the extracted internal mod jar
+	 */
 	private static Path getInternalMod() {
 		// TODO define steelwoolFolder statically somewhere? (Constants?)
 		var steelwoolFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT, Constants.MOD_CACHE_ROOT.toString());

@@ -9,6 +9,9 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
 
+/**
+ * Class containing miscellaneous utils
+ */
 public class Utils {
 	private static final Unsafe unsafe;
 
@@ -22,10 +25,19 @@ public class Utils {
 		}
 	}
 
+	/**
+	 * Get unsafe
+	 * @return unsafe
+	 */
 	public static Unsafe getUnsafe() {
 		return unsafe;
 	}
 
+	/**
+	 * Read JSON data from a URL
+	 * @param url the URL to read data from
+	 * @return the parsed json data
+	 */
 	public static JsonElement readJson(URL url) throws IOException {
 		try (var stream = url.openStream()) {
 			return JsonParser.parseReader(new BufferedReader(new InputStreamReader(stream)));
