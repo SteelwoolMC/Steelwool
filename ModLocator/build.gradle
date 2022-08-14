@@ -98,7 +98,7 @@ dependencies {
 
 processResources {
 	// TODO where in the jar should we actually be putting this?
-	from ("build/intermediary_to_tsrg.tiny") {into "cursedflames/steelwool/jartransform/mappings"}
+	from ("build/intermediary_to_tsrg.tiny") {into "io/github/steelwoolmc/steelwool/jartransform/mappings"}
 }
 
 // FIXME this currently doesn't re-run when the output name is changed
