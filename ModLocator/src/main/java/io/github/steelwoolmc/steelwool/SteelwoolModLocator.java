@@ -62,7 +62,7 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 			e.printStackTrace();
 		}
 
-		Constants.LOG.info("SteelWool mod locator instantiated. Hi Forge :)");
+		Constants.LOG.info("Steelwool mod locator instantiated. Hi Forge :)");
 
 		mappings = Mappings.getSimpleMappingData();
 		new FabricLoaderImpl(mappings);
@@ -77,7 +77,7 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 
 	@Override
 	public Stream<Path> scanCandidates() {
-		Constants.LOG.info("SteelWool scanning for mods...");
+		Constants.LOG.info("Steelwool scanning for mods...");
 		var excluded = ModDirTransformerDiscoverer.allExcluded();
 		for (var e : excluded) {
 			System.out.println("excluded = " + e);

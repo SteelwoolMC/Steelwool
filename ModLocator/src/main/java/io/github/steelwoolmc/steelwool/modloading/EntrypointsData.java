@@ -31,7 +31,7 @@ public class EntrypointsData {
 
 	public static Map<String, List<FabricModData.Entrypoint>> getEntrypoints() {
 		if (instance == null) {
-			Constants.LOG.warn("SteelWool entrypoints were not initialized. This shouldn't happen");
+			Constants.LOG.warn("Steelwool entrypoints were not initialized. This shouldn't happen");
 			return Map.of();
 		}
 		return Collections.unmodifiableMap(instance.entrypoints);

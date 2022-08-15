@@ -11,9 +11,8 @@ import java.nio.file.Path;
 public class Constants {
 	/** The mod's id */
 	public static final String MOD_ID = "steelwool";
-	// TODO SteelWool -> Steelwool everywhere
 	/** The name of the mod */
-	public static final String MOD_NAME = "SteelWool";
+	public static final String MOD_NAME = "Steelwool";
 	/** The mod's logger */
 	public static final Logger LOG = LogManager.getLogger(MOD_NAME);
 

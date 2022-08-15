@@ -190,8 +190,8 @@ public class FabricToForgeConverter {
 
 		var mainAttributes = manifest.getMainAttributes();
 		// TODO figure out how to cleanly include/get version data at runtime so we can put the version here
-		//      (manifest data? our manifest would be lost if someone puts SteelWool in a fat jar, but who's going to do that? it'd probably be fine)
-		mainAttributes.putValue("Transformed-With-SteelWool", "0.0.0");
+		//      (manifest data? our manifest would be lost if someone puts Steelwool in a fat jar, but who's going to do that? it'd probably be fine)
+		mainAttributes.putValue("Transformed-With-Steelwool", "0.0.0");
 
 		// TODO handle sided mixins
 		if (fabricData.mixins.size() > 0) {

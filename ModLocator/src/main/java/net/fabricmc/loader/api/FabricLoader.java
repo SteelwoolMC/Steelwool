@@ -30,7 +30,7 @@ import java.util.Optional;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.entrypoint.EntrypointContainer;
 
-// SteelWool implementation used instead of Fabric implementation:
+// Steelwool implementation used instead of Fabric implementation:
 //import net.fabricmc.loader.impl.FabricLoaderImpl;
 import io.github.steelwoolmc.steelwool.loaderapi.FabricLoaderImpl;
 
