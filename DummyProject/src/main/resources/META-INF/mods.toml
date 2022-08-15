@@ -1,0 +1,22 @@
+modLoader="javafml"
+loaderVersion="[40,)"
+license="N/A"
+[[mods]]
+modId="dummy"
+version="0.0"
+displayName="Dummy Mod"
+description='''
+Dummy mod used to load Steelwool in dev environments.
+'''
+[[dependencies.dummy]]
+    modId="forge"
+    mandatory=true
+    versionRange="[40,)"
+    ordering="NONE"
+    side="BOTH"
+[[dependencies.dummy]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.18,1.19)"
+    ordering="NONE"
+    side="BOTH"

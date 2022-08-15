@@ -42,51 +42,6 @@ archivesBaseName = "${mod_name}-${minecraft_version}"
 
 minecraft {
     mappings channel: 'official', version: minecraft_version
-
-	// TODO these run configurations will probably have to be different since this subproject is a ModLocator
-	//      doesn't matter right now since it doesn't work in dev environments anyway
-    runs {
-        client {
-            workingDirectory project.file('run')
-            ideaModule "${rootProject.name}.${project.name}.main"
-            taskName 'Client'
-//            args "-mixin.config=${mod_id}.mixins.json", "-mixin.config=${mod_id}.forge.mixins.json"
-            mods {
-				source sourceSets.main
-//                modClientRun {
-//                    source sourceSets.main
-////                    source project(":Common").sourceSets.main
-//                }
-            }
-        }
-
-        server {
-            workingDirectory project.file('run')
-            ideaModule "${rootProject.name}.${project.name}.main"
-            taskName 'Server'
-//            args "-mixin.config=${mod_id}.mixins.json", "-mixin.config=${mod_id}.forge.mixins.json"
-            mods {
-                modServerRun {
-                    source sourceSets.main
-//                    source project(":Common").sourceSets.main
-                }
-            }
-        }
-
-        data {
-            workingDirectory project.file('run')
-            ideaModule "${rootProject.name}.${project.name}.main"
-            args '--mod', mod_id, '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
-            taskName 'Data'
-//            args "-mixin.config=${mod_id}.mixins.json", "-mixin.config=${mod_id}.forge.mixins.json"
-            mods {
-                modDataRun {
-                    source sourceSets.main
-//                    source project(":Common").sourceSets.main
-                }
-            }
-        }
-    }
 }
 
 dependencies {
@@ -150,6 +105,18 @@ shadowJar {
 	archiveClassifier = ''
 	configurations = [/*project.configurations.shade*/]
 	finalizedBy 'reobfShadowJar'
+}
+
+// Used to access the main built jar from the dummy project, so that we can run Steelwool in a development environment
+configurations {
+	mainJar {
+		canBeConsumed = true
+		canBeResolved = false
+	}
+}
+
+artifacts {
+	mainJar(shadowJar)
 }
 
 assemble.dependsOn shadowJar
