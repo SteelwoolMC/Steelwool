@@ -17,21 +17,17 @@ plugins {
 }
 apply plugin: 'java'
 apply plugin: 'net.minecraftforge.gradle'
-apply plugin: 'eclipse'
 apply plugin: 'maven-publish'
 
 configurations {
 	intermediary
 	mcpconfig
-//	shade
-//	implementation.extendsFrom shade
 	fabricloader
 }
 
 dependencies {
-	// TODO extract versions to gradle.properties
-	intermediary "net.fabricmc:intermediary:1.18.2:v2"
-	mcpconfig "de.oceanlabs.mcp:mcp_config:1.18.2@zip"
+	intermediary "net.fabricmc:intermediary:${intermediary_version}"
+	mcpconfig "de.oceanlabs.mcp:mcp_config:${mcpconfig_version}"
 }
 
 
@@ -48,7 +44,6 @@ dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 	fabricloader "net.fabricmc:fabric-loader:${fabric_loader_version}"
 	implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
-//	implementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
 }
 
 processResources {
@@ -103,7 +98,7 @@ shadowJar {
 	from shadowBugWorkaround
 
 	archiveClassifier = ''
-	configurations = [/*project.configurations.shade*/]
+	configurations = []
 	finalizedBy 'reobfShadowJar'
 }
 
@@ -126,19 +121,3 @@ reobf {
 }
 
 jar.finalizedBy('reobfJar')
-
-//publishing {
-//    publications {
-//        mavenJava(MavenPublication) {
-//            groupId project.group
-//            artifactId project.archivesBaseName
-//            version project.version
-//            artifact jar
-//        }
-//    }
-//    repositories {
-//        maven {
-//            url "file://" + System.getenv("local_maven")
-//        }
-//    }
-//}

@@ -9,34 +9,10 @@ repositories {
 	}
 }
 
-
-
 subprojects {
-    
     apply plugin: 'java'
     
     java.toolchain.languageVersion = JavaLanguageVersion.of(17)
-//     java.withSourcesJar()
-//     java.withJavadocJar()
-        
-    jar {
-		// TODO do we actually want any of these attributes?
-
-//        manifest {
-//            attributes([
-//                'Specification-Title'     : mod_name,
-//                'Specification-Vendor'    : mod_author,
-//                'Specification-Version'   : project.jar.archiveVersion,
-//                'Implementation-Title'    : project.name,
-//                'Implementation-Version'  : project.jar.archiveVersion,
-//                'Implementation-Vendor'   : mod_author,
-//                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
-//                'Timestampe'              : System.currentTimeMillis(),
-//                'Built-On-Java'           : "${System.getProperty('java.vm.version')} (${System.getProperty('java.vm.vendor')})",
-//                'Build-On-Minecraft'      : minecraft_version
-//            ])
-//        }
-    }
     
     repositories {
         mavenCentral()

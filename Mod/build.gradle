@@ -12,9 +12,7 @@ buildscript {
 
 apply plugin: 'java'
 apply plugin: 'net.minecraftforge.gradle'
-apply plugin: 'eclipse'
 apply plugin: 'org.spongepowered.mixin'
-apply plugin: 'maven-publish'
 
 archivesBaseName = "${mod_name}-internal-${minecraft_version}"
 
@@ -40,7 +38,6 @@ sourceSets.main.resources.srcDir 'src/generated/resources'
 dependencies {
 	minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 	implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
-//	implementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
     implementation project(":ModLocator")
 	annotationProcessor 'org.spongepowered:mixin:0.8.4-SNAPSHOT:processor'
 }
@@ -55,20 +52,3 @@ processResources {
 compileJava.outputs.upToDateWhen { false }
 
 jar.finalizedBy('reobfJar')
-
-//publishing {
-//    publications {
-//        mavenJava(MavenPublication) {
-//            groupId project.group
-//            artifactId project.archivesBaseName
-//            version project.version
-//            from components.java
-//        }
-//    }
-//
-//    repositories {
-//        maven {
-//            url "file://" + System.getenv("local_maven")
-//        }
-//    }
-//}
