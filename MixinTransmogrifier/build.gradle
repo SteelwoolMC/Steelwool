@@ -35,7 +35,7 @@ configurations {
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 	shadedImplementation "net.bytebuddy:byte-buddy-agent:1.14.5"
-//	shadedImplementation "net.fabricmc:sponge-mixin:0.12.5+mixin.0.8.5"
+	shadedImplementation "net.fabricmc:sponge-mixin:0.12.5+mixin.0.8.5"
 }
 
 jar {
@@ -49,6 +49,8 @@ shadowJar {
 
 	relocate "org.spongepowered", "shadow.spongepowered"
 	relocate "shadowignore.org.spongepowered", "org.spongepowered"
+	// TODO byte-buddy should also probably be relocated, just in case anyone else happens to use it
+	// TODO relocate license information of dependencies, etc
 
 	archiveClassifier = 'shadow-temp'
 	configurations = [project.configurations.shadedImplementation]

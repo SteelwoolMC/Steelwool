@@ -1,0 +1,2 @@
+shadow.spongepowered.asm.service.mojang.MixinServiceLaunchWrapperBootstrap
+shadow.spongepowered.asm.service.modlauncher.MixinServiceModLauncherBootstrap
