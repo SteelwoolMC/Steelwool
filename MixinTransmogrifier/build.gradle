@@ -1,0 +1,87 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net' }
+        maven { url = 'https://repo.spongepowered.org/repository/maven-public/' }
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+        mavenCentral()
+    }
+    dependencies {
+        classpath group: 'net.minecraftforge.gradle', name: 'ForgeGradle', version: '5.1.+', changing: true
+    }
+}
+
+plugins {
+	id 'com.github.johnrengelman.shadow' version '7.1.2'
+}
+apply plugin: 'java'
+apply plugin: 'net.minecraftforge.gradle'
+apply plugin: 'maven-publish'
+
+archivesBaseName = "mixin-transmogrifier-${minecraft_version}"
+
+minecraft {
+    mappings channel: 'official', version: minecraft_version
+}
+
+configurations {
+	shadedImplementation
+	shadedImplementation.transitive = false
+	implementation.extendsFrom(shadedImplementation)
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+	shadedImplementation "net.bytebuddy:byte-buddy-agent:1.14.5"
+//	shadedImplementation "net.fabricmc:sponge-mixin:0.12.5+mixin.0.8.5"
+}
+
+jar {
+	archiveClassifier = "slim"
+}
+
+shadowJar {
+	dependencies {
+		exclude "META-INF/services/**"
+	}
+
+	relocate "org.spongepowered", "shadow.spongepowered"
+	relocate "shadowignore.org.spongepowered", "org.spongepowered"
+
+	archiveClassifier = 'shadow-temp'
+	configurations = [project.configurations.shadedImplementation]
+	finalizedBy "postShadow"
+}
+
+// Hack to ignore the services from shadowed mixin, since they don't get relocated
+tasks.register("postShadow", Jar) {
+	archiveClassifier = ""
+	dependsOn shadowJar
+	from("src/main/resources") {
+		include "META-INF/services/**"
+	}
+	from zipTree(shadowJar.archiveFile.get())
+	finalizedBy "reobfShadowJar"
+}
+
+// Used to access the main built jar from the dummy project, so that we can run Steelwool in a development environment
+configurations {
+	mainJar {
+		canBeConsumed = true
+		canBeResolved = false
+	}
+}
+
+artifacts {
+	mainJar(shadowJar)
+}
+
+assemble.dependsOn shadowJar
+
+reobf {
+	shadowJar {}
+}
+
+jar.finalizedBy('reobfJar')

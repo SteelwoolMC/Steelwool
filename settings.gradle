@@ -13,4 +13,4 @@ pluginManagement {
 }
 
 rootProject.name = 'Steelwool'
-include("Mod", "ModLocator", "DummyProject")
+include("Mod", "ModLocator", "MixinTransmogrifier", "DummyProject")
