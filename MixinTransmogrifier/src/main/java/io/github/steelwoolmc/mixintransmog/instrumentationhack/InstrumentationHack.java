@@ -78,7 +78,6 @@ public class InstrumentationHack {
 	 */
 	public static void purgeDefaultMixin() {
 		try {
-			// TODO need to also disable `MixinLaunchPluginLegacy`
 			// Overwriting just `MixinTransformationServiceAbstract.initialize` seems to be sufficient to disable it.
 			// Note: `shadowignore.org.spongepowered` is used because shadow relocates fully qualified names in string literals
 			var clazz = Class.forName("shadowignore.org.spongepowered.asm.launch.MixinTransformationServiceAbstract");

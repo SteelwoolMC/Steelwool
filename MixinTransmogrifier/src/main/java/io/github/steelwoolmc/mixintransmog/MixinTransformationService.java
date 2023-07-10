@@ -1,10 +1,12 @@
 package io.github.steelwoolmc.mixintransmog;
 
+import cpw.mods.modlauncher.LaunchPluginHandler;
 import cpw.mods.modlauncher.Launcher;
 import cpw.mods.modlauncher.TransformationServiceDecorator;
 import cpw.mods.modlauncher.api.IEnvironment;
 import cpw.mods.modlauncher.api.ITransformationService;
 import cpw.mods.modlauncher.api.ITransformer;
+import cpw.mods.modlauncher.serviceapi.ILaunchPluginService;
 import io.github.steelwoolmc.mixintransmog.instrumentationhack.InstrumentationHack;
 import org.jetbrains.annotations.NotNull;
 
@@ -16,9 +18,26 @@ import java.util.stream.Collectors;
 import static io.github.steelwoolmc.mixintransmog.Constants.Log;
 
 public class MixinTransformationService implements ITransformationService {
+	/**
+	 * Remove the original mixin launch plugin
+	 */
+	private static void removeMixinLaunchPlugin() {
+		try {
+			var launcherLaunchPluginsField = Launcher.class.getDeclaredField("launchPlugins");
+			launcherLaunchPluginsField.setAccessible(true);
+			var launchPluginHandlerPluginsField = LaunchPluginHandler.class.getDeclaredField("plugins");
+			launchPluginHandlerPluginsField.setAccessible(true);
+			Map<String, ILaunchPluginService> plugins = (Map) launchPluginHandlerPluginsField.get(launcherLaunchPluginsField.get(Launcher.INSTANCE));
+			plugins.remove("mixin");
+			Log.debug("Removed the mixin launch plugin");
+		} catch (NoSuchFieldException | IllegalAccessException e) {
+			throw new RuntimeException(e);
+		}
+	}
 	public MixinTransformationService() {
 		Log.info("Mixin Transmogrifier is definitely up to no good...");
 		InstrumentationHack.purgeDefaultMixin();
+		removeMixinLaunchPlugin();
 		Log.info("crimes against java were committed");
 	}
 
