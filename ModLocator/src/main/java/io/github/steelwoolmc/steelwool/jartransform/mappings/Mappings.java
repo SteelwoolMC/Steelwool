@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
  */
 public class Mappings {
 	// TODO get game version instead of doing this
-	private static final String TARGET_VERSION = "1.18.2";
+	private static final String TARGET_VERSION = "1.20.1";
 
 	/**
 	 * Record containing class, method, and field mappings from intermediary to TSRG
@@ -73,7 +73,7 @@ public class Mappings {
 	public static SimpleMappingData getSimpleMappingData() {
 		// TODO check minecraft version of existing file, somehow - put the version in the filename maybe?
 		//      maybe have a mappings folder and have files for each MC version
-		var steelwoolFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT, Constants.MOD_CACHE_ROOT.toString());
+		var steelwoolFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT);
 		var mappingFile = steelwoolFolder.resolve("intermediary_to_tsrg.tiny");
 		if (mappingFile.toFile().exists()) {
 			try {

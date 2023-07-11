@@ -12,11 +12,11 @@ import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.loading.FMLPaths;
 import net.minecraftforge.fml.loading.ModDirTransformerDiscoverer;
 import net.minecraftforge.fml.loading.StringUtils;
-import net.minecraftforge.fml.loading.moddiscovery.AbstractJarFileLocator;
 import net.minecraftforge.fml.loading.moddiscovery.AbstractJarFileModLocator;
 import net.minecraftforge.fml.loading.moddiscovery.ModFileParser;
 import net.minecraftforge.forgespi.locating.IModFile;
 import net.minecraftforge.forgespi.locating.IModLocator;
+import net.minecraftforge.forgespi.locating.ModFileLoadingException;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -28,7 +28,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -46,7 +45,7 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 
 	public SteelwoolModLocator() {
 		this.modFolder = FMLPaths.MODSDIR.get();
-		this.nestedJarFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT.resolve("jij"), Constants.MOD_ID+"/jij");
+		this.nestedJarFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT.resolve("jij"));
 		// Delete all existing JiJ files
 		// FIXME only do this for dev versions; we want caching for release - figure out how to do caching properly though
 		// FIXME don't do this *here*
@@ -209,28 +208,28 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 	 * Also removes the handling for non {@code mods.toml} jars, as all steelwool-generated jars will have a {@code mods.toml}.
 	 */
 	@Override
-	protected Optional<IModFile> createMod(Path... path) {
+	protected IModLocator.ModFileOrException createMod(Path... path) {
 		var mjm = ModIdHack.createModJarMetadata();
 		// TODO using our own metadata supplier might allow us to keep fabric.mod.json instead of translating beforehand?
 		var sj = SecureJar.from(
 				Manifest::new,
-				jar -> jar.findFile(MODS_TOML).isPresent() ? mjm : JarMetadata.from(jar, path),
+				jar-> jar.moduleDataProvider().findFile(MODS_TOML).isPresent() ? mjm : JarMetadata.from(jar, path),
 				(root, p) -> true,
 				path
 		);
 
 		IModFile mod;
-		if (sj.findFile(MODS_TOML).isPresent()) {
+		if (sj.moduleDataProvider().findFile(MODS_TOML).isPresent()) {
 			mod = new ModIdHack.WrappedModFile(sj, this, ModFileParser::modsTomlParser);
 		} else {
 			// We always generate jars with mods.toml currently, so the manifest FMLModType check isn't necessary
 			// FIXME warning/error? probably only in dev builds.
 			// TODO a way of determining whether we're in a dev build... the Constants class?
-			return Optional.empty();
+			return new ModFileOrException(null, new ModFileLoadingException("Unknown"));
 		}
 
 		mjm.setModFile(mod);
-		return Optional.of(mod);
+		return new ModFileOrException(mod, null);
 	}
 
 	@Override
@@ -246,7 +245,7 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 	 */
 	private static Path getInternalMod() {
 		// TODO define steelwoolFolder statically somewhere? (Constants?)
-		var steelwoolFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT, Constants.MOD_CACHE_ROOT.toString());
+		var steelwoolFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT);
 		var innerJarPath = steelwoolFolder.resolve(Constants.INNER_JAR_NAME);
 		// TODO caching
 		try (var stream = SteelwoolModLocator.class.getResourceAsStream("../../../../" + Constants.INNER_JAR_NAME)) {

@@ -17,6 +17,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 /**
@@ -98,7 +99,7 @@ public class ModIdHack {
 
 				IModFileInfo newFileInfo;
 				if (modFileInfo instanceof ModFileInfo) {
-					newFileInfo = new WrappedModFileInfo(((ModFileInfo) modFileInfo).getFile(), modFileInfo.getConfig(), List.of());
+					newFileInfo = new WrappedModFileInfo(((ModFileInfo) modFileInfo).getFile(), modFileInfo.getConfig(), (a)->{}, modFileInfo.requiredLanguageLoaders());
 				} else {
 					// TODO does this ever actually happen?
 					//      - if it does it could cause unexpected behaviour like ATs not applying
@@ -117,8 +118,8 @@ public class ModIdHack {
 	 * Wrapper around {@link ModFileInfo} to prevent invalid module names by replacing any {@code -} with {@code _}
 	 */
 	private static class WrappedModFileInfo extends ModFileInfo {
-		private WrappedModFileInfo(ModFile file, IConfigurable config, List<LanguageSpec> languageSpecs) {
-			super(file, config, languageSpecs);
+		private WrappedModFileInfo(final ModFile file, final IConfigurable config, Consumer<IModFileInfo> configFileConsumer, final List<LanguageSpec> languageSpecs) {
+			super(file, config, configFileConsumer, languageSpecs);
 		}
 
 		@Override public String moduleName() { return super.moduleName().replace("-", "_"); }

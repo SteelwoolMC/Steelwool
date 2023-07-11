@@ -78,27 +78,35 @@ task shadowBugWorkaround(type: Jar) {
 	// TODO exclude this from the build/libs directory?
 	archiveBaseName = "shadow_stuff_ignore_this"
 	from project(":Mod").jar.archiveFile.get()
+}
 
-	from (zipTree(project.configurations.fabricloader.singleFile)) {
-		include "LICENSE_*"
-		include "net/fabricmc/api/**"
-		include "net/fabricmc/loader/api/**"
-		exclude "net/fabricmc/loader/api/FabricLoader.class" // included in source so we can modify the file
-		include "net/fabricmc/loader/impl/util/version/VersionParser.class"
-		include "net/fabricmc/loader/impl/util/version/SemanticVersionImpl.class"
-		include "net/fabricmc/loader/util/version/SemanticVersionImpl.class"
-		include "net/fabricmc/loader/impl/util/version/VersionIntervalImpl.class"
-		include "net/fabricmc/loader/impl/util/version/VersionPredicateParser.class"
-		include "net/fabricmc/loader/impl/ObjectShareImpl.class"
+task fabricLoaderShadow(type: Copy) {
+	from {
+		zipTree(project.configurations.fabricloader.singleFile)
 	}
+	into("$buildDir/fabric_temp")
+
+	include "LICENSE_*"
+	include "net/fabricmc/api/**"
+	include "net/fabricmc/loader/api/**"
+	exclude "net/fabricmc/loader/api/FabricLoader.class" // included in source so we can modify the file
+	include "net/fabricmc/loader/impl/util/version/VersionParser.class"
+	include "net/fabricmc/loader/impl/util/version/SemanticVersionImpl.class"
+	include "net/fabricmc/loader/util/version/SemanticVersionImpl.class"
+	include "net/fabricmc/loader/impl/util/version/VersionIntervalImpl.class"
+	include "net/fabricmc/loader/impl/util/version/VersionPredicateParser.class"
+	include "net/fabricmc/loader/impl/ObjectShareImpl.class"
 }
 
 shadowJar {
 	dependsOn shadowBugWorkaround
 	from shadowBugWorkaround
+	dependsOn fabricLoaderShadow
+	from fabricLoaderShadow
+
+	configurations = []
 
 	archiveClassifier = ''
-	configurations = []
 	finalizedBy 'reobfShadowJar'
 }
 

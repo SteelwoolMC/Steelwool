@@ -48,7 +48,7 @@ public class FabricToForgeConverter {
 	public static List<Path> getConvertedJarPaths(List<ModCandidate> modCandidates, Mappings.SimpleMappingData mappings) {
 		var remapper = new Mappings.SteelwoolRemapper(mappings);
 
-		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT.resolve("mods"), Constants.MOD_ID+"/mods");
+		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT.resolve("mods"));
 
 		// Delete all existing mod files
 		// FIXME only do this for dev versions; we want caching for release - figure out how to do caching properly though
