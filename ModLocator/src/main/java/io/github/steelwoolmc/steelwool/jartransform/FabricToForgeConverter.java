@@ -137,6 +137,17 @@ public class FabricToForgeConverter {
 			var dummyModClassPath = newFs.getPath(dummyModClassPackage + "/Mod.class");
 			Files.createDirectories(dummyModClassPath.getParent());
 			Files.write(dummyModClassPath, generateDummyModClass(dummyModClassPackage + "/Mod", fabricData.id));
+
+			var mcmetaPath = newFs.getPath("pack.mcmeta");
+			if (!Files.exists(mcmetaPath)) {
+				Files.write(mcmetaPath, """
+						{
+							"pack": {
+								"description": "%s",
+								"pack_format": 8
+							}
+						}""".formatted(fabricData.id).getBytes());
+			}
 		}
 	}
 
