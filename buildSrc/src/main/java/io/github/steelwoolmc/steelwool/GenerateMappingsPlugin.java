@@ -8,6 +8,7 @@ import org.gradle.api.DefaultTask;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.file.RegularFileProperty;
+import org.gradle.api.logging.Logger;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.TaskAction;
@@ -30,15 +31,19 @@ public class GenerateMappingsPlugin implements Plugin<Project> {
 	private static final String INTERMEDIARY = "intermediary";
 	private static final String TSRG = "tsrg";
 
+	private static Logger logger;
+
 	public void apply(Project project) {
 		var task = project.getTasks().register("generateMappings", GenerateMappingsTask.class, generateMappingsTask -> {
 			generateMappingsTask.intermediaryJarFile = project.getObjects().fileProperty();
 			generateMappingsTask.mcpconfigJarFile = project.getObjects().fileProperty();
 			generateMappingsTask.outputFile = project.getObjects().fileProperty();
+			generateMappingsTask.secondaryOutputFile = project.getObjects().fileProperty();
 
 			generateMappingsTask.intermediaryJarFile.set(project.getConfigurations().getByName("intermediary").getSingleFile());
 			generateMappingsTask.mcpconfigJarFile.set(project.getConfigurations().getByName("mcpconfig").getSingleFile());
 			generateMappingsTask.outputFile.set(project.getLayout().getBuildDirectory().file("intermediary_to_tsrg.tiny"));
+			generateMappingsTask.secondaryOutputFile.set(project.getLayout().getBuildDirectory().file("intermediary_to_tsrg_temp_hack.tiny"));
 		});
 		project.getTasks().getByName("processResources").dependsOn(task);
 	}
@@ -49,6 +54,7 @@ public class GenerateMappingsPlugin implements Plugin<Project> {
 		RegularFileProperty mcpconfigJarFile;
 
 		RegularFileProperty outputFile;
+		RegularFileProperty secondaryOutputFile;
 
 		@InputFile
 		RegularFileProperty getIntermediaryJarFile() {
@@ -62,9 +68,14 @@ public class GenerateMappingsPlugin implements Plugin<Project> {
 		RegularFileProperty getOutputFile() {
 			return outputFile;
 		}
+		@OutputFile
+		RegularFileProperty getSecondaryOutputFile() {
+			return secondaryOutputFile;
+		}
 
 		@TaskAction
 		private void generateMappings() {
+			logger = getLogger();
 			try {
 				// TODO handle errors and use proper messages
 				var intermediaryJarUri = new URI("jar:" + intermediaryJarFile.get().getAsFile().toURI());
@@ -97,10 +108,13 @@ public class GenerateMappingsPlugin implements Plugin<Project> {
 					}
 				}
 
-				var merged = merge(intermediaryTree, tsrgTree);
+				var outputs = merge(intermediaryTree, tsrgTree);
 
 				try(var writer = new FileWriter(outputFile.get().getAsFile(), false)) {
-					writer.write(merged);
+					writer.write(outputs[0]);
+				}
+				try(var writer = new FileWriter(secondaryOutputFile.get().getAsFile(), false)) {
+					writer.write(outputs[1]);
 				}
 
 			} catch (URISyntaxException | IOException e) {
@@ -146,12 +160,13 @@ public class GenerateMappingsPlugin implements Plugin<Project> {
 		}
 	}
 
-	private static String merge(TinyTree intermediaryTree, TinyTree tsrgTree) {
+	private static String[] merge(TinyTree intermediaryTree, TinyTree tsrgTree) {
 		// We only store intermediary and tsrg, except for class names we store official in the tsrg column
 		// (since class names have to be changed from official -> mojang at runtime)
 		var metadata = "tiny\t2\t0\t" + INTERMEDIARY + "\t" + TSRG;
 		var tsrgClasses = tsrgTree.getDefaultNamespaceClassMap();
 		var outputBuilder = new StringBuilder(metadata + "\n");
+		var output2Builder = new StringBuilder(metadata + "\n");
 		for (var cls : intermediaryTree.getClasses()) {
 			var official = cls.getName(OFFICIAL);
 			var intermediary = cls.getName(INTERMEDIARY);
@@ -176,6 +191,7 @@ public class GenerateMappingsPlugin implements Plugin<Project> {
 						// TODO
 						throw new IllegalStateException();
 					}
+					tsrgFields.remove(tsrgField);
 					outputBuilder.append(String.format("\tf\t%s\t%s\t%s\n", field.getDescriptor(INTERMEDIARY), fieldIntermediary, tsrgField.getName(TSRG)));
 				}
 				var tsrgMethods = tsrg.getMethods();
@@ -193,10 +209,34 @@ public class GenerateMappingsPlugin implements Plugin<Project> {
 						// TODO
 						throw new IllegalStateException();
 					}
+					tsrgMethods.remove(tsrgMethod);
 					outputBuilder.append(String.format("\tm\t%s\t%s\t%s\n", method.getDescriptor(INTERMEDIARY), methodIntermediary, tsrgMethod.getName(TSRG)));
+				}
+				var foundSpecial = false;
+				for (var field : tsrgFields) {
+					var fieldOfficial = field.getName(OFFICIAL);
+					if (fieldOfficial.length() < 3 || fieldOfficial.startsWith("<") || fieldOfficial.endsWith("_")) continue;
+					var fieldTsrg = field.getName(TSRG);
+					if (fieldOfficial.equals(fieldTsrg)) continue;
+					logger.warn("Unmapped field, ignoring: {} -> {} in class {} -> {}",
+							field.getName(OFFICIAL), field.getName(TSRG), tsrg.getName(OFFICIAL), tsrg.getName(TSRG));
+				}
+				for (var method : tsrgMethods) {
+					var methodOfficial = method.getName(OFFICIAL);
+					if (methodOfficial.length() < 3 || methodOfficial.startsWith("<") || methodOfficial.endsWith("_")) continue;
+					var methodTsrg = method.getName(TSRG);
+					if (methodOfficial.equals(methodTsrg)) continue;
+					if (!foundSpecial) {
+						foundSpecial = true;
+						output2Builder.append(String.format("c\t%s\t%s\n", intermediary, official));
+					}
+					// We probably should have an actual method descriptor here, but this is a temporary hack until we reimplement remapping anyway
+					output2Builder.append(String.format("\tm\t%s\t%s\t%s\n", "()V", method.getName(OFFICIAL), method.getName(TSRG)));
+					logger.warn("Unmapped method, creating temporary special case: {} -> {} in class {} -> {}",
+							method.getName(OFFICIAL), method.getName(TSRG), tsrg.getName(OFFICIAL), tsrg.getName(TSRG));
 				}
 			}
 		}
-		return outputBuilder.toString();
+		return new String[] { outputBuilder.toString(), output2Builder.toString() };
 	}
 }

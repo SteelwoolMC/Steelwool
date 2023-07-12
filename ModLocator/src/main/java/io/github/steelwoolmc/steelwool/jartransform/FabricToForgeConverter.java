@@ -105,7 +105,7 @@ public class FabricToForgeConverter {
 					if (fileString.endsWith(".class")) {
 						var classReader = new ClassReader(Files.readAllBytes(oldFile));
 						var classWriter = new ClassWriter(classReader, 0);
-						var classRemapper = new ClassRemapper(classWriter, remapper);
+						var classRemapper = new Mappings.SteelwoolClassRemapper(classWriter, remapper);
 
 						classReader.accept(classRemapper, 0);
 

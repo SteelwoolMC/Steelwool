@@ -4,6 +4,13 @@ import com.google.gson.JsonElement;
 import io.github.steelwoolmc.steelwool.Constants;
 import io.github.steelwoolmc.steelwool.Utils;
 import net.minecraftforge.fml.loading.FMLPaths;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.Handle;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
+import org.objectweb.asm.commons.ClassRemapper;
+import org.objectweb.asm.commons.MethodRemapper;
 import org.objectweb.asm.commons.Remapper;
 import oshi.util.tuples.Pair;
 
@@ -14,7 +21,9 @@ import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -37,14 +46,17 @@ public class Mappings {
 	 * @param methods map from intermediary method names to TSRG method names
 	 * @param fields map from intermediary field names to TSRG field names
 	 */
-	public record SimpleMappingData(HashMap<String, String> classes, HashMap<String, String> methods, HashMap<String, String> fields) {}
+	public record SimpleMappingData(HashMap<String, String> classes,
+									HashMap<String, String> methods,
+									HashMap<String, String> fields,
+									HashMap<String, String> temporaryMethodSpecialCase) {}
 
 	/**
 	 * Load {@link SimpleMappingData} from a tiny-format intermediary->TSRG mapping file
 	 * @param file the path of the mapping file to load
 	 * @return the loaded mapping data
 	 */
-	private static SimpleMappingData simpleMappings(Path file) throws IOException {
+	private static SimpleMappingData simpleMappings(Path file, Path file2) throws IOException {
 		var classes = new HashMap<String, String>();
 		var methods = new HashMap<String, String>();
 		var fields = new HashMap<String, String>();
@@ -62,8 +74,28 @@ public class Mappings {
 						}
 					});
 		}
+		var temporaryMethodSpecialCase = new HashMap<String, String>();
+		var currentClass = new String[] {"", ""};
+		try (var reader = Files.newBufferedReader(file2)) {
+			reader
+					.lines()
+					.filter(line -> !line.isEmpty() && !line.startsWith("#"))
+					.forEach(line -> {
+						var terms = line.strip().split("\t");
+						switch (terms[0]) {
+							case "c" -> {
+								currentClass[0] = terms[1];
+								currentClass[1] = terms[2];
+							}
+							case "m" -> {
+								temporaryMethodSpecialCase.put(currentClass[0] + "::" + terms[2], terms[3]);
+								temporaryMethodSpecialCase.put(currentClass[1] + "::" + terms[2], terms[3]);
+							}
+						}
+					});
+		}
 
-		return new SimpleMappingData(classes, methods, fields);
+		return new SimpleMappingData(classes, methods, fields, temporaryMethodSpecialCase);
 	}
 
 	/**
@@ -75,18 +107,19 @@ public class Mappings {
 		//      maybe have a mappings folder and have files for each MC version
 		var steelwoolFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT);
 		var mappingFile = steelwoolFolder.resolve("intermediary_to_tsrg.tiny");
-		if (mappingFile.toFile().exists()) {
+		var mappingFile2 = steelwoolFolder.resolve("intermediary_to_tsrg_temp_hack.tiny");
+		if (mappingFile.toFile().exists() && mappingFile2.toFile().exists()) {
 			try {
-				return simpleMappings(mappingFile);
+				return simpleMappings(mappingFile, mappingFile2);
 			} catch(IOException e) {
 				Constants.LOG.warn("Failed to load existing mappings file, regenerating it...");
 			}
 		}
 
-		applyMojangClassNames(mappingFile);
+		applyMojangClassNames(mappingFile, mappingFile2);
 
 		try {
-			return simpleMappings(mappingFile);
+			return simpleMappings(mappingFile, mappingFile2);
 		} catch(IOException e) {
 			throw new RuntimeException("Failed to generate and load mappings file");
 		}
@@ -98,7 +131,7 @@ public class Mappings {
 	 * Download the official Mojang classnames and apply them to the intermediary->TSRG data embedded in the mod jar
 	 * @param outputFile the file to write the remapped mapping data to
 	 */
-	private static void applyMojangClassNames(Path outputFile) {
+	private static void applyMojangClassNames(Path outputFile, Path outputFile2) {
 		try {
 			var url = new URL("https://launchermeta.mojang.com/mc/game/version_manifest.json");
 			JsonElement data = Utils.readJson(url);
@@ -137,6 +170,21 @@ public class Mappings {
 						})
 						.collect(Collectors.joining("\n"));
 				try(var writer = new FileWriter(outputFile.toFile(), false)) {
+					writer.write(mappings);
+				}
+			}
+			try (var stream = Mappings.class.getResourceAsStream("intermediary_to_tsrg_temp_hack.tiny")) {
+				var mappings = new BufferedReader(new InputStreamReader(stream))
+						.lines()
+						.map(line -> {
+							if(!line.startsWith("c")) return line;
+							var parts = line.split("\t");
+							var mojangClassName = mojangClassMappings.get(parts[2]);
+							assert mojangClassName != null;
+							return String.format("%s\t%s\t%s", parts[0], parts[1], mojangClassName);
+						})
+						.collect(Collectors.joining("\n"));
+				try(var writer = new FileWriter(outputFile2.toFile(), false)) {
 					writer.write(mappings);
 				}
 			}
@@ -184,6 +232,11 @@ public class Mappings {
 
 		@Override
 		public String mapMethodName(String owner, String name, String descriptor) {
+			// Temporary hack for slightly better compatibility until we rewrite the remapper to properly consider context
+			var tempHackKey = owner + "::" + name;
+			if (mappings.temporaryMethodSpecialCase.containsKey(tempHackKey)) {
+				return mappings.temporaryMethodSpecialCase.get(tempHackKey);
+			}
 			return mappings.methods.containsKey(name) ? mappings.methods.get(name) : super.mapMethodName(owner, name, descriptor);
 		}
 
@@ -223,6 +276,52 @@ public class Mappings {
 		@Override public String mapAnnotationAttributeName(String descriptor, String name) { return super.mapAnnotationAttributeName(descriptor, name); }
 		@Override public String mapInvokeDynamicMethodName(String name, String descriptor) { return super.mapInvokeDynamicMethodName(name, descriptor); }
 	}
+	// We need our own ClassRemapper and MethodRemapper in order to special-case lambdas
+	public static class SteelwoolClassRemapper extends ClassRemapper {
+		public SteelwoolClassRemapper(final ClassVisitor classVisitor, final Remapper remapper) {
+			this(/* latest api = */ Opcodes.ASM9, classVisitor, remapper);
+		}
+
+		protected SteelwoolClassRemapper(int api, ClassVisitor classVisitor, Remapper remapper) {
+			super(api, classVisitor, remapper);
+		}
+
+		@Override
+		protected MethodVisitor createMethodRemapper(final MethodVisitor methodVisitor) {
+			return new SteelwoolMethodRemapper(api, methodVisitor, remapper);
+		}
+	}
+	static class SteelwoolMethodRemapper extends MethodRemapper {
+		private static final List<Handle> META_FACTORIES = Arrays.asList(
+				new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+						"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+								+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;",
+						false),
+				new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "altMetafactory",
+						"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Object;)"
+								+ "Ljava/lang/invoke/CallSite;",
+						false)
+		);
+
+		protected SteelwoolMethodRemapper(int api, MethodVisitor methodVisitor, Remapper remapper) {
+			super(api, methodVisitor, remapper);
+		}
+
+		@Override
+		public void visitInvokeDynamicInsn(String name, String desc, Handle bsm, Object... bsmArgs) {
+			// See: https://github.com/OpenCubicChunks/OptiFineDevTweaker/blob/020ddb2c09bf02bf15c0992828733160a9fd54e7/src/main/java/ofdev/launchwrapper/OptifineDevAdapter.java#L87C9-L99C10
+			// Special case lambda metaFactory to get new name
+			if (META_FACTORIES.contains(bsm)) {
+				String owner = Type.getReturnType(desc).getInternalName();
+				String odesc = ((Type) bsmArgs[0])
+						.getDescriptor();
+				name = remapper.mapMethodName(owner, name, odesc);
+			}
+
+			super.visitInvokeDynamicInsn(name, desc, bsm, bsmArgs);
+		}
+	}
+
 
 	private static final Pattern methodPattern = Pattern.compile("method_[0-9]+");
 	private static final Pattern fieldPattern = Pattern.compile("field_[0-9]+");
