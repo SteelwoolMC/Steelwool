@@ -1,2 +1,2 @@
-shadow.spongepowered.tools.obfuscation.MixinObfuscationProcessorInjection
-shadow.spongepowered.tools.obfuscation.MixinObfuscationProcessorTargets
+io.github.steelwoolmc.shadow.spongepowered.tools.obfuscation.MixinObfuscationProcessorInjection
+io.github.steelwoolmc.shadow.spongepowered.tools.obfuscation.MixinObfuscationProcessorTargets

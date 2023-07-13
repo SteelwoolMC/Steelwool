@@ -87,7 +87,6 @@ task fabricLoaderShadow(type: Copy) {
 	}
 	into("$buildDir/fabric_temp")
 
-	include "LICENSE_*"
 	include "net/fabricmc/api/**"
 	include "net/fabricmc/loader/api/**"
 	exclude "net/fabricmc/loader/api/FabricLoader.class" // included in source so we can modify the file
@@ -104,6 +103,13 @@ shadowJar {
 	from shadowBugWorkaround
 	dependsOn fabricLoaderShadow
 	from fabricLoaderShadow
+
+	from("licenses") {
+		into "META-INF/"
+	}
+	from("LICENSE.txt") {
+		into "META-INF/"
+	}
 
 	configurations = []
 

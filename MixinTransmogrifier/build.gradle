@@ -41,16 +41,17 @@ dependencies {
 jar {
 	archiveClassifier = "slim"
 }
-
 shadowJar {
 	dependencies {
 		exclude "META-INF/services/**"
+		// Exclude dependency licenses since we include them ourselves
+		exclude "**/LICENSE*"
+		exclude "**/NOTICE*"
 	}
 
-	relocate "org.spongepowered", "shadow.spongepowered"
+	relocate "net.bytebuddy.agent", "io.github.steelwoolmc.shadow.bytebuddy.agent"
+	relocate "org.spongepowered", "io.github.steelwoolmc.shadow.spongepowered"
 	relocate "shadowignore.org.spongepowered", "org.spongepowered"
-	// TODO byte-buddy should also probably be relocated, just in case anyone else happens to use it
-	// TODO relocate license information of dependencies, etc
 
 	archiveClassifier = 'shadow-temp'
 	configurations = [project.configurations.shadedImplementation]
@@ -63,6 +64,12 @@ tasks.register("postShadow", Jar) {
 	dependsOn shadowJar
 	from("src/main/resources") {
 		include "META-INF/services/**"
+	}
+	from("licenses") {
+		into "META-INF/"
+	}
+	from("LICENSE.txt") {
+		into "META-INF/"
 	}
 	from zipTree(shadowJar.archiveFile.get())
 	finalizedBy "reobfShadowJar"

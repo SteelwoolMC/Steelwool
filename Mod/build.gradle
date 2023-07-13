@@ -51,6 +51,12 @@ processResources {
     }
 }
 
+jar {
+	from("LICENSE.txt") {
+		into "META-INF/"
+	}
+}
+
 // FIXME the refmap isn't added to the jar on rebuilds for some reason, so we have to force recompilation every time
 compileJava.outputs.upToDateWhen { false }
 
