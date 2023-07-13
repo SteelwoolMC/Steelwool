@@ -16,6 +16,9 @@ apply plugin: 'org.spongepowered.mixin'
 
 archivesBaseName = "${mod_name}-internal-${minecraft_version}"
 
+// IntelliJ complains if this isn't here and I'm not sure why
+tasks.register("prepareWorkspace")
+
 mixin {
 	add sourceSets.main, "${mod_id}.refmap.json"
 

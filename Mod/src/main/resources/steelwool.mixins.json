@@ -5,6 +5,7 @@
 	"compatibilityLevel": "JAVA_17",
 	"mixins": [
 		"registryhack.MixinForgeRegistry",
+		"registryhack.MixinMappedRegistry",
 		"registryhack.MixinNamespacedWrapper"
 	],
 	"client": [
