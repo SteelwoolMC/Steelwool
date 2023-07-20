@@ -99,6 +99,7 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 			e.printStackTrace();
 			mods = List.of();
 		}
+		Constants.LOG.info("Paths to try:\n{}", mods.stream().map(Path::toString).collect(Collectors.joining("\n")));
 
 		// FIXME dependency resolution; the same dependency could be nested in multiple different jars
 		// TODO make forge treat the nested jars as child mods? at least in the case of Gambeson
@@ -156,7 +157,10 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 				return List.of();
 			}
 			var fabricJson = zf.getEntry("fabric.mod.json");
-			if (fabricJson == null) return List.of();
+			if (fabricJson == null) {
+				Constants.LOG.warn("Failed to get forge or fabric info for path " + path);
+				return List.of();
+			}
 			System.out.println("FOUND FABRIC MOD JSON for path " + path);
 
 			FabricModData data;

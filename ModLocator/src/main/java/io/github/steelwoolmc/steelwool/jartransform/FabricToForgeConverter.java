@@ -78,6 +78,11 @@ public class FabricToForgeConverter {
 		return outputJars;
 	}
 
+	private static boolean shouldSkip(String path) {
+		if (path.startsWith("/com/electronwill/nightconfig")) return true;
+		return false;
+	}
+
 	/**
 	 * Transform a Fabric mod jar into a Forge mod jar
 	 * @param inputPath the path of the fabric mod jar
@@ -99,6 +104,7 @@ public class FabricToForgeConverter {
 				public FileVisitResult visitFile(Path oldFile, BasicFileAttributes attrs) throws IOException {
 					var fileString = oldFile.toString();
 					var newFile = newFs.getPath(fileString);
+					if (shouldSkip(fileString)) return FileVisitResult.SKIP_SUBTREE;
 
 					Files.createDirectories(newFile.getParent());
 
@@ -172,8 +178,8 @@ public class FabricToForgeConverter {
 
 		var modEntry = Config.inMemory();
 		modEntry.set("modId", fabricData.id);
-		modEntry.set("version", fabricData.version);
-		modEntry.set("displayName", fabricData.name);
+		modEntry.set("version", fabricData.version == null ? "UNKNOWN" : fabricData.version);
+		modEntry.set("displayName", fabricData.name == null ? "UNKNOWN" : fabricData.name);
 
 		config.set("mods", List.of(modEntry));
 
@@ -313,6 +319,7 @@ public class FabricToForgeConverter {
 	 * @return the equivalent access transformer
 	 */
 	private static String convertAccessWidenerLine(Mappings.SimpleMappingData mappings, String transformer) {
+		if (transformer.startsWith("transitive-")) transformer = transformer.substring("transitive-".length());
 		var parts = transformer.split("\\s+");
 		var className = Mappings.naiveRemapString(mappings, parts[2]).replace("/", ".");
 		// TODO error handling for invalid lines
