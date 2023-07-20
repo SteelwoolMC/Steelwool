@@ -1,0 +1,3 @@
+[submodule "gitpatcher"]
+	path = gitpatcher
+	url = https://github.com/SteelwoolMC/gitpatcher

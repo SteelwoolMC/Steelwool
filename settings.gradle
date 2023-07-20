@@ -12,5 +12,7 @@ pluginManagement {
     }
 }
 
+includeBuild("gitpatcher")
+
 rootProject.name = 'Steelwool'
 include("Mod", "ModLocator", "MixinTransmogrifier", "DummyProject")
