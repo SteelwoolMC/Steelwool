@@ -4,40 +4,47 @@ import cpw.mods.jarhandling.JarMetadata;
 import cpw.mods.jarhandling.SecureJar;
 import io.github.steelwoolmc.steelwool.jartransform.FabricToForgeConverter;
 import io.github.steelwoolmc.steelwool.jartransform.mappings.Mappings;
-import io.github.steelwoolmc.steelwool.loaderapi.FabricLoaderImpl;
 import io.github.steelwoolmc.steelwool.modloading.EntrypointsData;
-import io.github.steelwoolmc.steelwool.modloading.FabricModData;
-import io.github.steelwoolmc.steelwool.modloading.ModCandidate;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.loader.impl.FabricLoaderImpl;
+import net.fabricmc.loader.impl.discovery.DirectoryModCandidateFinder;
+import net.fabricmc.loader.impl.discovery.ModCandidate;
+import net.fabricmc.loader.impl.discovery.ModDiscoverer;
+import net.fabricmc.loader.impl.discovery.ModResolutionException;
+import net.fabricmc.loader.impl.discovery.ModResolver;
+import net.fabricmc.loader.impl.launch.knot.Knot;
+import net.fabricmc.loader.impl.metadata.DependencyOverrides;
+import net.fabricmc.loader.impl.metadata.VersionOverrides;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.loading.FMLPaths;
 import net.minecraftforge.fml.loading.ModDirTransformerDiscoverer;
-import net.minecraftforge.fml.loading.StringUtils;
 import net.minecraftforge.fml.loading.moddiscovery.AbstractJarFileModLocator;
 import net.minecraftforge.fml.loading.moddiscovery.ModFileParser;
 import net.minecraftforge.forgespi.locating.IModFile;
 import net.minecraftforge.forgespi.locating.IModLocator;
 import net.minecraftforge.forgespi.locating.ModFileLoadingException;
 
-import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Set;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.zip.ZipFile;
+
+import static io.github.steelwoolmc.steelwool.Constants.LOG;
 
 /**
  * {@link IModLocator} implementation that finds Fabric mods in the mods directory, transforms them into Forge mods, and provides the transformed jars to Forge
  */
 public class SteelwoolModLocator extends AbstractJarFileModLocator {
 	private final Path modFolder;
+	private final Path configFolder;
 	private final Path nestedJarFolder;
 	private final EntrypointsData entrypoints = EntrypointsData.createInstance();
 
@@ -45,6 +52,7 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 
 	public SteelwoolModLocator() {
 		this.modFolder = FMLPaths.MODSDIR.get();
+		this.configFolder = FMLPaths.CONFIGDIR.get();
 		this.nestedJarFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT.resolve("jij"));
 		// Delete all existing JiJ files
 		// FIXME only do this for dev versions; we want caching for release - figure out how to do caching properly though
@@ -62,9 +70,13 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 		}
 
 		Constants.LOG.info("Steelwool mod locator instantiated. Hi Forge :)");
+		Constants.LOG.info("Initializing Knot");
+		// TODO do we want to pass (some?) args?
+		var knot = new Knot(FMLEnvironment.dist.isClient() ? EnvType.CLIENT : EnvType.SERVER);
+		knot.init(new String[0]);
+		Constants.LOG.info("Knot initialized");
 
 		mappings = Mappings.getSimpleMappingData();
-		new FabricLoaderImpl(mappings);
 
 		ModIdHack.makeForgeAcceptDashesInModids();
 	}
@@ -82,33 +94,18 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 			System.out.println("excluded = " + e);
 		}
 
-		List<Path> mods;
-
+		List<ModCandidate> modCandidates;
 		try {
-			mods = Files.list(this.modFolder)
-					.filter(p -> !excluded.contains(p) && isValidJar(p))
-					// .map(p -> getModCandidate(p))
-					.filter(Objects::nonNull)
-					// Use the same sorting as Forge, for consistency
-					// TODO Fabric's sorting is much more complex; need to resort after finding Fabric mods
-					//  - or maybe not? they shuffle in-dev to avoid order reliance
-					.sorted(Comparator.comparing(path-> StringUtils.toLowerCase(path.getFileName().toString())))
-					.collect(Collectors.toList());
-		} catch (IOException e) {
-			// TODO error handling
-			e.printStackTrace();
-			mods = List.of();
+			modCandidates = fabricLoader_resolveMods();
+		} catch (ModResolutionException e) {
+			throw new RuntimeException(e);
 		}
-		Constants.LOG.info("Paths to try:\n{}", mods.stream().map(Path::toString).collect(Collectors.joining("\n")));
 
-		// FIXME dependency resolution; the same dependency could be nested in multiple different jars
-		// TODO make forge treat the nested jars as child mods? at least in the case of Gambeson
-		var modCandidates = mods.stream().map(path -> getModCandidates(path, false)).flatMap(List::stream).collect(Collectors.toList());
 		// FIXME we shouldn't be doing entrypoints here
 		modCandidates.forEach(cand -> {
-			cand.metadata().entrypoints.forEach((prototype, entrypoints) -> {
-				entrypoints.forEach(entrypoint -> {
-					this.entrypoints.addEntrypoint(prototype, entrypoint);
+			cand.getMetadata().getEntrypointKeys().forEach(key -> {
+				cand.getMetadata().getEntrypoints(key).forEach(entrypoint -> {
+					entrypoints.addEntrypoint(key, entrypoint);
 				});
 			});
 		});
@@ -121,94 +118,9 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 		return outputJars.stream();
 	}
 
-	// We use the same initial jar-checking logic as fabric loader, for consistency
-
-	/**
-	 * Check whether an arbitrary file path is a valid jar file path
-	 * @param path the file path to check
-	 * @return whether the file path is a valid jar file path
-	 */
-	private static boolean isValidJar(Path path) {
-		if (!Files.isRegularFile(path)) return false;
-		try {
-			if (Files.isHidden(path)) return false;
-		} catch (IOException e) {
-			// TODO warning log message
-			return false;
-		}
-
-		var fileName = path.getFileName().toString();
-
-		return fileName.endsWith(".jar") && !fileName.startsWith(".");
-	}
-
-	/**
-	 * Get a mod candidate for a jar path.
-	 *
-	 * <p>Checks whether a mod jar contains a fabric mod, but no forge mod (to avoid double-loading of universal jars)</p>
-	 */
-	// TODO some fabric mods may include a dummy mods.toml to warn forge users; we don't want to skip those
-	// FIXME this needs to be reworked to handle nested jars properly
-	private List<ModCandidate> getModCandidates(Path path, boolean isNested) {
-		try (ZipFile zf = new ZipFile(path.toFile())) {
-			var forgeToml = zf.getEntry("META-INF/mods.toml");
-			if (forgeToml != null) {
-				System.out.println("FOUND FORGE TOML for path " + path);
-				return List.of();
-			}
-			var fabricJson = zf.getEntry("fabric.mod.json");
-			if (fabricJson == null) {
-				Constants.LOG.warn("Failed to get forge or fabric info for path " + path);
-				return List.of();
-			}
-			System.out.println("FOUND FABRIC MOD JSON for path " + path);
-
-			FabricModData data;
-
-			try (var is = new BufferedInputStream(zf.getInputStream(fabricJson))) {
-				data = FabricModData.readData(is, isNested);
-			}
-
-			System.out.println("got fabric data!");
-//			System.out.println(data.data.toString());
-
-			if (data.environment != FabricModData.Side.BOTH && (data.environment == FabricModData.Side.CLIENT) != FMLEnvironment.dist.isClient()) {
-				// We're on the wrong side for this mod; don't try to load it
-				// TODO should nested jars be loaded in this case? probably not?
-				return List.of();
-			}
-
-			// TODO can we use streams instead of lists? caused issues when I tried due to zip files closing before lambda evaluation
-			var list = new ArrayList<ModCandidate>();
-			list.add(new ModCandidate(path, data));
-
-			list.addAll(data.nestedJars.stream().map(nestedJarPath -> {
-				try (var is = new BufferedInputStream(zf.getInputStream(zf.getEntry(nestedJarPath)))) {
-					var outputPath = nestedJarFolder.resolve(Path.of(nestedJarPath).getFileName());
-					// FIXME this could cause issues with duplicate nested mods overwriting each other
-					//       - how does fabric-loader avoid extracting the jars?
-					if (!Files.exists(outputPath))
-						Files.copy(is, outputPath);
-					else {
-						Constants.LOG.warn("duplicate extracted nested jar {}", outputPath);
-					}
-					return getModCandidates(outputPath, true);
-				} catch (IOException e) {
-					// TODO better error handling
-					throw new RuntimeException("Error while handling nested jar", e);
-				}
-			}).flatMap(List::stream).collect(Collectors.toList()));
-			return list;
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-
-		return List.of(); //TODO
-	}
-
 	/**
 	 * Copied from parent logic, but constructs a {@link ModIdHack.WrappedModFile} instead, in order to replace {@code -} with {@code _} in mod ids
-	 *
+	 * <p>
 	 * Also removes the handling for non {@code mods.toml} jars, as all steelwool-generated jars will have a {@code mods.toml}.
 	 */
 	@Override
@@ -259,5 +171,60 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 			throw new RuntimeException("Failed to extract internal mod jar", e);
 		}
 		return innerJarPath;
+	}
+
+	// Based on FabricLoaderImpl.setup
+	private List<ModCandidate> fabricLoader_resolveMods() throws ModResolutionException {
+		boolean remapRegularMods = FabricLoaderImpl.INSTANCE.isDevelopmentEnvironment();
+		VersionOverrides versionOverrides = new VersionOverrides();
+		DependencyOverrides depOverrides = new DependencyOverrides(configFolder);
+
+		// discover mods
+
+		ModDiscoverer discoverer = new ModDiscoverer(versionOverrides, depOverrides);
+		// TODO classpath and argument?
+//		discoverer.addCandidateFinder(new ClasspathModCandidateFinder());
+		discoverer.addCandidateFinder(new DirectoryModCandidateFinder(modFolder, remapRegularMods));
+//		discoverer.addCandidateFinder(new ArgumentModCandidateFinder(remapRegularMods));
+
+		Map<String, Set<ModCandidate>> envDisabledMods = new HashMap<>();
+		var modCandidates = discoverer.discoverMods(FabricLoaderImpl.INSTANCE, envDisabledMods);
+
+		LOG.info("Found {} mod candidates: {}", modCandidates.size(), modCandidates.stream().map(ModCandidate::getId).collect(Collectors.joining(", ")));
+
+		// dump version and dependency overrides info
+
+		// TODO logging
+//		if (!versionOverrides.getAffectedModIds().isEmpty()) {
+//			Log.info(LogCategory.GENERAL, "Versions overridden for %s", String.join(", ", versionOverrides.getAffectedModIds()));
+//		}
+//
+//		if (!depOverrides.getAffectedModIds().isEmpty()) {
+//			Log.info(LogCategory.GENERAL, "Dependencies overridden for %s", String.join(", ", depOverrides.getAffectedModIds()));
+//		}
+
+		// resolve mods
+
+		modCandidates = ModResolver.resolve(modCandidates, FabricLoaderImpl.INSTANCE.getEnvironmentType(), envDisabledMods);
+
+		FabricLoaderImpl.INSTANCE.dumpModList(modCandidates);
+
+		// TODO fabric-loader shuffles mod order in-dev unless system property DEBUG_DISABLE_MOD_SHUFFLE is set
+
+		// add mods
+		var steelwoolFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT);
+		var innerJarPath = steelwoolFolder.resolve(Constants.INNER_JAR_NAME);
+
+		for (ModCandidate mod : modCandidates) {
+			if (!mod.hasPath() && !mod.isBuiltin()) {
+				try {
+					mod.setPaths(Collections.singletonList(mod.copyToDir(innerJarPath, false)));
+				} catch (IOException e) {
+					throw new RuntimeException("Error extracting mod "+mod, e);
+				}
+			}
+		}
+
+		return modCandidates;
 	}
 }

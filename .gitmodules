@@ -1,3 +1,6 @@
 [submodule "gitpatcher"]
 	path = gitpatcher
 	url = https://github.com/SteelwoolMC/gitpatcher
+[submodule "loader-api/fabric-loader"]
+	path = loader-api/fabric-loader
+	url = https://github.com/FabricMC/fabric-loader

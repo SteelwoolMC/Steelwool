@@ -1,0 +1,175 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: CursedFlames <18627001+CursedFlames@users.noreply.github.com>
+Date: Tue, 25 Jul 2023 02:50:08 +1200
+Subject: [PATCH] initial steelwool patches
+
+
+diff --git a/minecraft/src/main/java/net/fabricmc/loader/impl/game/minecraft/MinecraftGameProvider.java b/minecraft/src/main/java/net/fabricmc/loader/impl/game/minecraft/MinecraftGameProvider.java
+index bc503bbe78b0f34d7ad1abfdbaf6f2ea4bedf3f1..8c3a89be1fddb5d783d6d4e836fcf6273f1eeaec 100644
+--- a/minecraft/src/main/java/net/fabricmc/loader/impl/game/minecraft/MinecraftGameProvider.java
++++ b/minecraft/src/main/java/net/fabricmc/loader/impl/game/minecraft/MinecraftGameProvider.java
+@@ -90,6 +90,11 @@ public class MinecraftGameProvider implements GameProvider {
+ 			new BrandingPatch(),
+ 			new EntrypointPatchFML125());
+ 
++	public MinecraftGameProvider() {
++		// FIXME (Steelwool)
++		this.versionData = new McVersion.Builder().setId("1.20.1").setName("1.20.1").setVersion("1.20.1").setRelease("1.20.1").build();
++	}
++
+ 	@Override
+ 	public String getGameId() {
+ 		return "minecraft";
+@@ -344,7 +349,8 @@ public class MinecraftGameProvider implements GameProvider {
+ 
+ 		setupLogHandler(launcher, true);
+ 
+-		transformer.locateEntrypoints(launcher, gameJars);
++		// Steelwool: fabric-loader patches disabled
++//		transformer.locateEntrypoints(launcher, gameJars);
+ 	}
+ 
+ 	private void setupLogHandler(FabricLauncher launcher, boolean useTargetCl) {
+diff --git a/src/main/java/net/fabricmc/loader/impl/FabricLoaderImpl.java b/src/main/java/net/fabricmc/loader/impl/FabricLoaderImpl.java
+index b0ba68cbbd4045b6ae7ae28c09088f381df0b279..89e7d9dc6b6de7d433adb3b2c87080c8761844f1 100644
+--- a/src/main/java/net/fabricmc/loader/impl/FabricLoaderImpl.java
++++ b/src/main/java/net/fabricmc/loader/impl/FabricLoaderImpl.java
+@@ -279,7 +279,8 @@ public final class FabricLoaderImpl extends net.fabricmc.loader.FabricLoader {
+ 		modCandidates = null;
+ 	}
+ 
+-	private void dumpModList(List<ModCandidate> mods) {
++	// Steelwool: make public for use in SteelwoolModLocator
++	public void dumpModList(List<ModCandidate> mods) {
+ 		StringBuilder modListText = new StringBuilder();
+ 
+ 		boolean[] lastItemOfNestLevel = new boolean[mods.size()];
+@@ -412,7 +413,8 @@ public final class FabricLoaderImpl extends net.fabricmc.loader.FabricLoader {
+ 
+ 	@Override
+ 	public boolean isDevelopmentEnvironment() {
+-		return FabricLauncherBase.getLauncher().isDevelopment();
++		// FIXME (Steelwool)
++		return false;
+ 	}
+ 
+ 	private void addMod(ModCandidate candidate) throws ModResolutionException {
+diff --git a/src/main/java/net/fabricmc/loader/impl/discovery/ModCandidate.java b/src/main/java/net/fabricmc/loader/impl/discovery/ModCandidate.java
+index 4bc5a52cd2e6f6e8e308e1ada6729e297954d2cc..89c4f2d4b4f40ad1714f893b0b14619e0f2d9579 100644
+--- a/src/main/java/net/fabricmc/loader/impl/discovery/ModCandidate.java
++++ b/src/main/java/net/fabricmc/loader/impl/discovery/ModCandidate.java
+@@ -90,7 +90,8 @@ public final class ModCandidate implements DomainObject.Mod {
+ 
+ 	private ModCandidate(List<Path> paths, String localPath, long hash, LoaderModMetadata metadata, boolean requiresRemap, Collection<ModCandidate> nestedMods) {
+ 		this.originPaths = paths;
+-		this.paths = paths;
++		// TODO (Steelwool): hack to fix modloading, since otherwise we try to load Steelwool.jar twice *somehow*
++		this.paths = metadata.getId().equals("fabricloader") ? new ArrayList<>() : paths;
+ 		this.localPath = localPath;
+ 		this.metadata = metadata;
+ 		this.hash = hash;
+diff --git a/src/main/java/net/fabricmc/loader/impl/launch/knot/Knot.java b/src/main/java/net/fabricmc/loader/impl/launch/knot/Knot.java
+index 6c273f4ce30790d79400ea30adf030a8bf04447d..d3aeb1a89c0fc911f20ba12926a62a5a131de5e5 100644
+--- a/src/main/java/net/fabricmc/loader/impl/launch/knot/Knot.java
++++ b/src/main/java/net/fabricmc/loader/impl/launch/knot/Knot.java
+@@ -81,6 +81,7 @@ public final class Knot extends FabricLauncherBase {
+ 		this.envType = type;
+ 	}
+ 
++	// Steelwool: rip out various fabric-loader things that are handled by Forge (there's a lot of messy patches in this method)
+ 	public ClassLoader init(String[] args) {
+ 		setProperties(properties);
+ 
+@@ -103,6 +104,7 @@ public final class Knot extends FabricLauncherBase {
+ 
+ 		classPath.clear();
+ 
++		/*
+ 		List<String> missing = null;
+ 		List<String> unsupported = null;
+ 
+@@ -126,45 +128,53 @@ public final class Knot extends FabricLauncherBase {
+ 
+ 		if (unsupported != null) Log.warn(LogCategory.KNOT, "Knot does not support wildcard class path entries: %s - the game may not load properly!", String.join(", ", unsupported));
+ 		if (missing != null) Log.warn(LogCategory.KNOT, "Class path entries reference missing files: %s - the game may not load properly!", String.join(", ", missing));
+-
+-		provider = createGameProvider(args);
++		*/
++		try {
++			// Steelwool: just hardcode the GameProvider
++			provider = (GameProvider) Class.forName("net.fabricmc.loader.impl.game.minecraft.MinecraftGameProvider").getConstructor().newInstance();
++		} catch (ReflectiveOperationException e) {
++			throw new RuntimeException(e);
++		}
+ 		Log.finishBuiltinConfig();
+ 		Log.info(LogCategory.GAME_PROVIDER, "Loading %s %s with Fabric Loader %s", provider.getGameName(), provider.getRawGameVersion(), FabricLoaderImpl.VERSION);
+ 
++		// TODO (Steelwool) this may need to be different
+ 		isDevelopment = Boolean.parseBoolean(System.getProperty(SystemProperties.DEVELOPMENT, "false"));
+ 
+ 		// Setup classloader
+ 		// TODO: Provide KnotCompatibilityClassLoader in non-exclusive-Fabric pre-1.13 environments?
+-		boolean useCompatibility = provider.requiresUrlClassLoader() || Boolean.parseBoolean(System.getProperty("fabric.loader.useCompatibilityClassLoader", "false"));
+-		classLoader = KnotClassLoaderInterface.create(useCompatibility, isDevelopment(), envType, provider);
+-		ClassLoader cl = classLoader.getClassLoader();
++//		boolean useCompatibility = provider.requiresUrlClassLoader() || Boolean.parseBoolean(System.getProperty("fabric.loader.useCompatibilityClassLoader", "false"));
++//		classLoader = KnotClassLoaderInterface.create(useCompatibility, isDevelopment(), envType, provider);
++//		ClassLoader cl = classLoader.getClassLoader();
+ 
+ 		provider.initialize(this);
+ 
+-		Thread.currentThread().setContextClassLoader(cl);
++//		Thread.currentThread().setContextClassLoader(cl);
+ 
+ 		FabricLoaderImpl loader = FabricLoaderImpl.INSTANCE;
+ 		loader.setGameProvider(provider);
+-		loader.load();
+-		loader.freeze();
++//		loader.load();
++//		loader.freeze();
+ 
+-		FabricLoaderImpl.INSTANCE.loadAccessWideners();
++//		FabricLoaderImpl.INSTANCE.loadAccessWideners();
+ 
+-		FabricMixinBootstrap.init(getEnvironmentType(), loader);
+-		FabricLauncherBase.finishMixinBootstrapping();
+-
+-		classLoader.initializeTransformers();
+-
+-		provider.unlockClassPath(this);
++//		FabricMixinBootstrap.init(getEnvironmentType(), loader);
++//		FabricLauncherBase.finishMixinBootstrapping();
++//
++//		classLoader.initializeTransformers();
++//
++//		provider.unlockClassPath(this);
+ 		unlocked = true;
+ 
+-		try {
+-			EntrypointUtils.invoke("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch);
+-		} catch (RuntimeException e) {
+-			throw FormattedException.ofLocalized("exception.initializerFailure", e);
+-		}
++		// TODO (Steelwool): preLaunch entrypoints? they probably won't work here
++//		try {
++//			EntrypointUtils.invoke("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch);
++//		} catch (RuntimeException e) {
++//			throw FormattedException.ofLocalized("exception.initializerFailure", e);
++//		}
+ 
+-		return cl;
++		// Steelwool: don't mess with classloaders (TODO do we need to?)
++		return null;
+ 	}
+ 
+ 	private GameProvider createGameProvider(String[] args) {
+@@ -282,7 +292,8 @@ public final class Knot extends FabricLauncherBase {
+ 
+ 	@Override
+ 	public void setValidParentClassPath(Collection<Path> paths) {
+-		classLoader.setValidParentClassPath(paths);
++		// FIXME (Steelwool): classLoader methods should actually be handled properly (how?)
++//		classLoader.setValidParentClassPath(paths);
+ 	}
+ 
+ 	@Override

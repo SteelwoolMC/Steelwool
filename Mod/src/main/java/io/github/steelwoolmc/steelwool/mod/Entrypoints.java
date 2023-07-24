@@ -25,13 +25,13 @@ public class Entrypoints {
 		var mainEntrypoints = allEntrypoints.getOrDefault("main", List.of());
 		var clientEntrypoints = allEntrypoints.getOrDefault("client", List.of());
 
-		mainEntrypoints.stream().filter(entrypoint -> entrypoint.adapter().equals("default")).forEach(entrypoint -> {
-			var init = createInitializer(entrypoint.value(), ModInitializer.class);
+		mainEntrypoints.stream().filter(entrypoint -> entrypoint.getAdapter().equals("default")).forEach(entrypoint -> {
+			var init = createInitializer(entrypoint.getValue(), ModInitializer.class);
 			init.onInitialize();
 		});
 
-		clientEntrypoints.stream().filter(entrypoint -> entrypoint.adapter().equals("default")).forEach(entrypoint -> {
-			var init = createInitializer(entrypoint.value(), ClientModInitializer.class);
+		clientEntrypoints.stream().filter(entrypoint -> entrypoint.getAdapter().equals("default")).forEach(entrypoint -> {
+			var init = createInitializer(entrypoint.getValue(), ClientModInitializer.class);
 			init.onInitializeClient();
 		});
 	}
@@ -44,13 +44,13 @@ public class Entrypoints {
 		var mainEntrypoints = allEntrypoints.getOrDefault("main", List.of());
 		var serverEntrypoints = allEntrypoints.getOrDefault("server", List.of());
 
-		mainEntrypoints.stream().filter(entrypoint -> entrypoint.adapter().equals("default")).forEach(entrypoint -> {
-			var init = createInitializer(entrypoint.value(), ModInitializer.class);
+		mainEntrypoints.stream().filter(entrypoint -> entrypoint.getAdapter().equals("default")).forEach(entrypoint -> {
+			var init = createInitializer(entrypoint.getValue(), ModInitializer.class);
 			init.onInitialize();
 		});
 
-		serverEntrypoints.stream().filter(entrypoint -> entrypoint.adapter().equals("default")).forEach(entrypoint -> {
-			var init = createInitializer(entrypoint.value(), DedicatedServerModInitializer.class);
+		serverEntrypoints.stream().filter(entrypoint -> entrypoint.getAdapter().equals("default")).forEach(entrypoint -> {
+			var init = createInitializer(entrypoint.getValue(), DedicatedServerModInitializer.class);
 			init.onInitializeServer();
 		});
 	}

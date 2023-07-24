@@ -22,7 +22,9 @@ apply plugin: 'maven-publish'
 configurations {
 	intermediary
 	mcpconfig
-	fabricloader
+	shaded {
+		transitive = false
+	}
 }
 
 dependencies {
@@ -42,8 +44,8 @@ minecraft {
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
-	fabricloader "net.fabricmc:fabric-loader:${fabric_loader_version}"
-	implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+	implementation project(path: ":loader-api", configuration: "output")
+	shaded project(path: ":loader-api", configuration: "output")
 }
 
 processResources {
@@ -72,8 +74,6 @@ jar {
 
 // Workaround for a bug in shadow. see: https://github.com/johnrengelman/shadow/issues/111#issuecomment-317233031
 // Shadow has no way to exclude jars from being unzipped, so we nest a jar inside another jar, so that it'll only unzip the outer one.
-// Since we're already doing this task anyway,
-// we also use it as an opportunity to filter fabric classes before everything gets mixed together in the shadowJar task (where using `include`s becomes more annoying)
 task shadowBugWorkaround(type: Jar) {
 	dependsOn project(":Mod").jar
 	// TODO exclude this from the build/libs directory?
@@ -81,28 +81,9 @@ task shadowBugWorkaround(type: Jar) {
 	from project(":Mod").jar.archiveFile.get()
 }
 
-task fabricLoaderShadow(type: Copy) {
-	from {
-		zipTree(project.configurations.fabricloader.singleFile)
-	}
-	into("$buildDir/fabric_temp")
-
-	include "net/fabricmc/api/**"
-	include "net/fabricmc/loader/api/**"
-	exclude "net/fabricmc/loader/api/FabricLoader.class" // included in source so we can modify the file
-	include "net/fabricmc/loader/impl/util/version/VersionParser.class"
-	include "net/fabricmc/loader/impl/util/version/SemanticVersionImpl.class"
-	include "net/fabricmc/loader/util/version/SemanticVersionImpl.class"
-	include "net/fabricmc/loader/impl/util/version/VersionIntervalImpl.class"
-	include "net/fabricmc/loader/impl/util/version/VersionPredicateParser.class"
-	include "net/fabricmc/loader/impl/ObjectShareImpl.class"
-}
-
 shadowJar {
 	dependsOn shadowBugWorkaround
 	from shadowBugWorkaround
-	dependsOn fabricLoaderShadow
-	from fabricLoaderShadow
 
 	from("licenses") {
 		into "META-INF/"
@@ -111,10 +92,13 @@ shadowJar {
 		into "META-INF/"
 	}
 
-	configurations = []
+	configurations = [project.configurations.shaded]
 
 	archiveClassifier = ''
 	finalizedBy 'reobfShadowJar'
+
+	// TODO necessary?
+	outputs.upToDateWhen { false }
 }
 
 // Used to access the main built jar from the dummy project, so that we can run Steelwool in a development environment

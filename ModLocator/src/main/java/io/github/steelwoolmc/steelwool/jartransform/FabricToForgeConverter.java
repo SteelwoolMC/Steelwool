@@ -8,13 +8,14 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import io.github.steelwoolmc.steelwool.Constants;
 import io.github.steelwoolmc.steelwool.jartransform.mappings.Mappings;
-import io.github.steelwoolmc.steelwool.modloading.FabricModData;
-import io.github.steelwoolmc.steelwool.modloading.ModCandidate;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.loader.impl.discovery.ModCandidate;
+import net.fabricmc.loader.impl.metadata.LoaderModMetadata;
+import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.loading.FMLPaths;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.Remapper;
 
 import java.io.IOException;
@@ -27,11 +28,12 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
+
+import static io.github.steelwoolmc.steelwool.Constants.LOG;
 
 /**
  * Class for converting Fabric mod jars to mod jars that can be loaded by Forge
@@ -67,12 +69,15 @@ public class FabricToForgeConverter {
 		var outputJars = new ArrayList<Path>();
 
 		for (var candidate : modCandidates) {
-			var outputPath = modsOutputFolder.resolve(candidate.path().getFileName());
+			if (candidate.isBuiltin()) continue;
+			// TODO why is this one not marked builtin? does fabric not do that or did we break something
+			if (candidate.getId().equals("fabricloader")) continue;
+			var outputPath = modsOutputFolder.resolve(candidate.getPaths().get(0).getFileName());
 			try {
-				transformJar(candidate.path(), outputPath, mappings, remapper, candidate.metadata());
+				transformJar(candidate.getPaths().get(0), outputPath, mappings, remapper, candidate.getMetadata());
 				outputJars.add(outputPath);
 			} catch (IOException | URISyntaxException e) {
-				throw new RuntimeException(String.format("Failed to transform mod jar for %s", candidate.metadata().id), e);
+				throw new RuntimeException(String.format("Failed to transform mod jar for %s", candidate.getMetadata().getId()), e);
 			}
 		}
 		return outputJars;
@@ -91,11 +96,11 @@ public class FabricToForgeConverter {
 	 * @param remapper the ASM remapper to be used for remapping mod classes
 	 * @param fabricData the fabric mod metadata of the mod
 	 */
-	private static void transformJar(Path inputPath, Path outputPath, Mappings.SimpleMappingData mappings, Remapper remapper, FabricModData fabricData) throws URISyntaxException, IOException {
+	private static void transformJar(Path inputPath, Path outputPath, Mappings.SimpleMappingData mappings, Remapper remapper, LoaderModMetadata fabricData) throws URISyntaxException, IOException {
 		URI originalJarUri = new URI("jar:"+inputPath.toUri());
 		URI remappedJarUri = new URI("jar:"+outputPath.toUri());
 		try(var oldFs = FileSystems.newFileSystem(originalJarUri, Map.of()); var newFs = FileSystems.newFileSystem(remappedJarUri, Map.of("create", "true"))) {
-			var accessWidenerPath = fabricData.accessWidener != null ? oldFs.getPath(fabricData.accessWidener) : null;
+			var accessWidenerPath = fabricData.getAccessWidener() != null ? oldFs.getPath(fabricData.getAccessWidener()) : null;
 			var accessWidenerOutputPath = newFs.getPath("/META-INF/accesstransformer.cfg");
 			// Create META-INF immediately if it doesn't exist
 			Files.createDirectories(newFs.getPath("/META-INF"));
@@ -137,12 +142,12 @@ public class FabricToForgeConverter {
 			updateManifest(manifestPath, fabricData);
 
 			// Fabric allows for `-` in mod ids, which isn't allowed in java packages
-			var escapedId = fabricData.id.replace("-", "_");
+			var escapedId = fabricData.getId().replace("-", "_");
 
 			var dummyModClassPackage = "io/github/steelwoolmc/steelwool/generated/" + escapedId;
 			var dummyModClassPath = newFs.getPath(dummyModClassPackage + "/Mod.class");
 			Files.createDirectories(dummyModClassPath.getParent());
-			Files.write(dummyModClassPath, generateDummyModClass(dummyModClassPackage + "/Mod", fabricData.id));
+			Files.write(dummyModClassPath, generateDummyModClass(dummyModClassPackage + "/Mod", fabricData.getId()));
 
 			var mcmetaPath = newFs.getPath("pack.mcmeta");
 			if (!Files.exists(mcmetaPath)) {
@@ -152,7 +157,7 @@ public class FabricToForgeConverter {
 								"description": "%s",
 								"pack_format": 8
 							}
-						}""".formatted(fabricData.id).getBytes());
+						}""".formatted(fabricData.getId()).getBytes());
 			}
 		}
 	}
@@ -162,7 +167,7 @@ public class FabricToForgeConverter {
 	 * @param fabricData the fabric mod metadata
 	 * @return the forge mod metadata, as a {@link Config}
 	 */
-	private static Config generateForgeMetadata(FabricModData fabricData) {
+	private static Config generateForgeMetadata(LoaderModMetadata fabricData) {
 		// TODO do we care about side effects from always setting this and not resetting it afterwards?
 		// why is this a global property anyway? seems kinda janky
 		Config.setInsertionOrderPreserved(true);
@@ -177,9 +182,9 @@ public class FabricToForgeConverter {
 		config.set("license", "Unknown");
 
 		var modEntry = Config.inMemory();
-		modEntry.set("modId", fabricData.id);
-		modEntry.set("version", fabricData.version == null ? "UNKNOWN" : fabricData.version);
-		modEntry.set("displayName", fabricData.name == null ? "UNKNOWN" : fabricData.name);
+		modEntry.set("modId", fabricData.getId());
+		modEntry.set("version", fabricData.getVersion() == null ? "UNKNOWN" : fabricData.getVersion().getFriendlyString());
+		modEntry.set("displayName", fabricData.getName() == null ? "UNKNOWN" : fabricData.getName());
 
 		config.set("mods", List.of(modEntry));
 
@@ -193,7 +198,7 @@ public class FabricToForgeConverter {
 	 * @param manifestPath the path of the manifest to modify
 	 * @param fabricData the fabric mod metadata of the mod
 	 */
-	private static void updateManifest(Path manifestPath, FabricModData fabricData) throws IOException {
+	private static void updateManifest(Path manifestPath, LoaderModMetadata fabricData) throws IOException {
 		Manifest manifest;
 
 		if (Files.exists(manifestPath)) {
@@ -210,10 +215,11 @@ public class FabricToForgeConverter {
 		//      (manifest data? our manifest would be lost if someone puts Steelwool in a fat jar, but who's going to do that? it'd probably be fine)
 		mainAttributes.putValue("Transformed-With-Steelwool", "0.0.0");
 
-		// TODO handle sided mixins
-		if (fabricData.mixins.size() > 0) {
-			mainAttributes.putValue("MixinConfigs", fabricData.mixins.stream()
-					.map(FabricModData.MixinConfig::config).collect(Collectors.joining(",")));
+		var mixinConfigs = fabricData.getMixinConfigs(FMLEnvironment.dist.isClient() ? EnvType.CLIENT : EnvType.SERVER);
+		if (mixinConfigs.size() > 0) {
+			// FIXME check if String.join is correct here
+			mainAttributes.putValue("MixinConfigs", String.join(",", mixinConfigs));
+			LOG.debug("mixins: " + mainAttributes.getValue("MixinConfigs"));
 		}
 
 		try(var stream = Files.newOutputStream(manifestPath)) {
@@ -279,12 +285,12 @@ public class FabricToForgeConverter {
 			var headerParts = header.split("\\s+");
 			if (headerParts.length != 3 || !headerParts[0].equals("accessWidener")) {
 				// TODO maybe add config options for parsing strictness (fail vs. warn)
-				Constants.LOG.warn("Got invalid access widener header, converting it anyway!\n{}", header);
+				LOG.warn("Got invalid access widener header, converting it anyway!\n{}", header);
 			} else if (!headerParts[1].equals("v1")) {
-				Constants.LOG.warn("Got non-v1 access widener header, converting it as if it's v1 anyway!\n{}", header);
+				LOG.warn("Got non-v1 access widener header, converting it as if it's v1 anyway!\n{}", header);
 			// TODO is it `intermediary` or `named`? fabric-api has `named`
 			} else if (!headerParts[2].equals("intermediary")) {
-				Constants.LOG.warn("Got non-v1 access widener header, converting it anyway!\n{}", header);
+				LOG.warn("Got non-v1 access widener header, converting it anyway!\n{}", header);
 			}
 
 			// TODO option for whether or not to preserve comments?
@@ -362,7 +368,7 @@ public class FabricToForgeConverter {
 				}
 			}
 		}
-		Constants.LOG.warn("Failed to convert access widener line: {}", transformer);
+		LOG.warn("Failed to convert access widener line: {}", transformer);
 		return "";
 	}
 

@@ -40,7 +40,7 @@ sourceSets.main.resources.srcDir 'src/generated/resources'
 
 dependencies {
 	minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
-	implementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+	implementation project(path: ":loader-api", configuration: "output")
     implementation project(":ModLocator")
 	annotationProcessor 'org.spongepowered:mixin:0.8.4-SNAPSHOT:processor'
 }
@@ -56,8 +56,5 @@ jar {
 		into "META-INF/"
 	}
 }
-
-// FIXME the refmap isn't added to the jar on rebuilds for some reason, so we have to force recompilation every time
-compileJava.outputs.upToDateWhen { false }
 
 jar.finalizedBy('reobfJar')

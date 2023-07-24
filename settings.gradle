@@ -15,4 +15,13 @@ pluginManagement {
 includeBuild("gitpatcher")
 
 rootProject.name = 'Steelwool'
-include("Mod", "ModLocator", "MixinTransmogrifier", "DummyProject")
+include(
+		"Mod",
+		"ModLocator",
+		"loader-api",
+		"loader-api:steelwool-hooks",
+		"loader-api:steelwool-loader",
+		"loader-api:steelwool-loader:minecraft",
+		"MixinTransmogrifier",
+		"DummyProject"
+)

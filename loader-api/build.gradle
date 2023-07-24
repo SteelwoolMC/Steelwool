@@ -1,0 +1,52 @@
+plugins {
+	id 'java'
+	id 'net.minecraftforge.gitpatcher'
+	id 'com.github.johnrengelman.shadow' version '7.1.2'
+}
+
+patches {
+	// The submodule path you just created
+	submodule = 'fabric-loader'
+	// The target folder for the patched repositories
+	target = file('steelwool-loader')
+	// The folder where the patches are saved
+	patches = file('loader-patches')
+}
+
+group 'io.github.steelwoolmc'
+version '0.0.1'
+
+jar {
+	enabled = false
+	archiveClassifier = "disabled"
+}
+
+shadowJar {
+	enabled = false
+}
+
+configurations {
+	include
+}
+
+dependencies {
+	include project(path: ":loader-api:steelwool-hooks")
+	include project(path: ":loader-api:steelwool-loader", configuration: "shaded")
+}
+
+allprojects {
+	tasks.withType(AbstractArchiveTask) {
+		preserveFileTimestamps = false
+		reproducibleFileOrder = true
+	}
+}
+
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+tasks.register("bundledJar", ShadowJar) {
+	configurations = [project.configurations.include]
+}
+tasks.build.dependsOn("bundledJar")
+configurations.create("output")
+artifacts {
+	add("output", bundledJar)
+}
