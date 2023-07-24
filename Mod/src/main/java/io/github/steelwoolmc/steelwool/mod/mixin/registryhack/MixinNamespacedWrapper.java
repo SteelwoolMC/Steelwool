@@ -2,14 +2,13 @@ package io.github.steelwoolmc.steelwool.mod.mixin.registryhack;
 
 import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.Registry;
-import net.minecraftforge.registries.NamespacedWrapper;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(NamespacedWrapper.class)
+@Mixin(targets = {"net.minecraftforge.registries.NamespacedWrapper"})
 public class MixinNamespacedWrapper<T> {
 	/**
 	 * @author CursedFlames
