@@ -207,18 +207,18 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 
 		modCandidates = ModResolver.resolve(modCandidates, FabricLoaderImpl.INSTANCE.getEnvironmentType(), envDisabledMods);
 
+		// temporary hack to deal with mods JIJing parts of fabric-api
+		modCandidates = modCandidates.stream().filter(c -> !fabricApiModIds.contains(c.getId())).collect(Collectors.toList());
+
 		FabricLoaderImpl.INSTANCE.dumpModList(modCandidates);
 
 		// TODO fabric-loader shuffles mod order in-dev unless system property DEBUG_DISABLE_MOD_SHUFFLE is set
 
 		// add mods
-		var steelwoolFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT);
-		var innerJarPath = steelwoolFolder.resolve(Constants.INNER_JAR_NAME);
-
 		for (ModCandidate mod : modCandidates) {
 			if (!mod.hasPath() && !mod.isBuiltin()) {
 				try {
-					mod.setPaths(Collections.singletonList(mod.copyToDir(innerJarPath, false)));
+					mod.setPaths(Collections.singletonList(mod.copyToDir(nestedJarFolder, false)));
 				} catch (IOException e) {
 					throw new RuntimeException("Error extracting mod "+mod, e);
 				}
@@ -227,4 +227,48 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 
 		return modCandidates;
 	}
+
+	private static final List<String> fabricApiModIds = List.of(
+			"fabric-api-base",
+			"fabric-api-lookup-api-v1",
+			"fabric-biome-api-v1",
+			"fabric-block-api-v1",
+			"fabric-blockrenderlayer-v1",
+			"fabric-client-tags-api-v1",
+			"fabric-command-api-v2",
+			"fabric-content-registries-v0",
+			"fabric-convention-tags-v1",
+			"fabric-crash-report-info-v1",
+			"fabric-data-generation-api-v1",
+			"fabric-dimensions-v1",
+			"fabric-entity-events-v1",
+			"fabric-events-interaction-v0",
+			"fabric-game-rule-api-v1",
+			"fabric-gametest-api-v1",
+			"fabric-item-api-v1",
+			"fabric-item-group-api-v1",
+			"fabric-key-binding-api-v1",
+			"fabric-lifecycle-events-v1",
+			"fabric-loot-api-v2",
+			"fabric-message-api-v1",
+			"fabric-mining-level-api-v1",
+			"fabric-models-v0",
+			"fabric-networking-api-v1",
+			"fabric-object-builder-api-v1",
+			"fabric-particles-v1",
+			"fabric-recipe-api-v1",
+			"fabric-registry-sync-v0",
+			"fabric-renderer-api-v1",
+			"fabric-renderer-indigo",
+			"fabric-rendering-data-attachment-v1",
+			"fabric-rendering-fluids-v1",
+			"fabric-rendering-v1",
+			"fabric-resource-conditions-api-v1",
+			"fabric-resource-loader-v0",
+			"fabric-screen-api-v1",
+			"fabric-screen-handler-api-v1",
+			"fabric-sound-api-v1",
+			"fabric-transfer-api-v1",
+			"fabric-transitive-access-wideners-v1"
+	);
 }
