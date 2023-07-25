@@ -9,6 +9,7 @@ import com.google.gson.JsonPrimitive;
 import io.github.steelwoolmc.steelwool.Constants;
 import io.github.steelwoolmc.steelwool.jartransform.mappings.Mappings;
 import net.fabricmc.api.EnvType;
+import net.fabricmc.loader.api.metadata.Person;
 import net.fabricmc.loader.impl.discovery.ModCandidate;
 import net.fabricmc.loader.impl.metadata.LoaderModMetadata;
 import net.minecraftforge.fml.loading.FMLEnvironment;
@@ -178,13 +179,29 @@ public class FabricToForgeConverter {
 		config.set("modLoader", "javafml");
 		// TODO don't hardcode this
 		config.set("loaderVersion", "[40,)");
-		// FIXME get actual license information before release
-		config.set("license", "Unknown");
+		// TODO do we want to join with commas or do something else here?
+		config.set("license", String.join(", ", fabricData.getLicense()));
+		fabricData.getContact().get("issues").ifPresent(s -> config.set("issueTrackerURL", s));
+
 
 		var modEntry = Config.inMemory();
 		modEntry.set("modId", fabricData.getId());
 		modEntry.set("version", fabricData.getVersion() == null ? "UNKNOWN" : fabricData.getVersion().getFriendlyString());
-		modEntry.set("displayName", fabricData.getName() == null ? "UNKNOWN" : fabricData.getName());
+		modEntry.set("displayName", fabricData.getName() == null ? fabricData.getId() : fabricData.getName());
+		modEntry.set("description", fabricData.getDescription());
+		// TODO may need to move logo file to the root of the mod jar if it's currently located elsewhere
+		fabricData.getIconPath(512).ifPresent(s -> {
+			modEntry.set("logoFile", s);
+			modEntry.set("logoBlur", false);
+		});
+		modEntry.set("authors", fabricData.getAuthors().stream().map(Person::getName).collect(Collectors.joining(", ")));
+		var contributors = fabricData.getContributors();
+		if (!contributors.isEmpty()) modEntry.set("credits",
+				"Contributors: " + contributors.stream().map(Person::getName).collect(Collectors.joining(", ")));
+		fabricData.getContact().get("homepage")
+				.or(()->fabricData.getContact().get("sources"))
+				.or(()->fabricData.getContact().get("issues"))
+				.ifPresent(s -> modEntry.set("displayURL", s));
 
 		config.set("mods", List.of(modEntry));
 
