@@ -3,6 +3,7 @@ package io.github.steelwoolmc.steelwool.jartransform.mappings;
 import com.google.gson.JsonElement;
 import io.github.steelwoolmc.steelwool.Constants;
 import io.github.steelwoolmc.steelwool.Utils;
+import io.github.steelwoolmc.steelwool.jartransform.FabricToForgeConverter;
 import net.minecraftforge.fml.loading.FMLPaths;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Handle;
@@ -25,6 +26,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -220,9 +222,11 @@ public class Mappings {
 	 */
 	public static class SteelwoolRemapper extends Remapper {
 		private final SimpleMappingData mappings;
+		private final Map<String, FabricToForgeConverter.ClassData> classes;
 
-		public SteelwoolRemapper(SimpleMappingData mappings) {
+		public SteelwoolRemapper(SimpleMappingData mappings, Map<String, FabricToForgeConverter.ClassData> classes) {
 			this.mappings = mappings;
+			this.classes = classes;
 		}
 
 		@Override
@@ -236,6 +240,21 @@ public class Mappings {
 			var tempHackKey = owner + "::" + name;
 			if (mappings.temporaryMethodSpecialCase.containsKey(tempHackKey)) {
 				return mappings.temporaryMethodSpecialCase.get(tempHackKey);
+			}
+			// TODO this is incredibly inefficient - fine for now because it's temporary(TM)
+			if (classes.containsKey(owner)) {
+				var value = classes.get(owner).getHierarchy().map(parent -> {
+					var key = parent + "::" + name;
+					if (mappings.temporaryMethodSpecialCase.containsKey(key)) {
+						return mappings.temporaryMethodSpecialCase.get(key);
+					}
+					return null;
+				}).filter(Objects::nonNull).findFirst();
+				if (value.isPresent()) {
+					System.out.println(owner);
+					System.out.println(value.get());
+				}
+				if (value.isPresent()) return value.get();
 			}
 			return mappings.methods.containsKey(name) ? mappings.methods.get(name) : super.mapMethodName(owner, name, descriptor);
 		}

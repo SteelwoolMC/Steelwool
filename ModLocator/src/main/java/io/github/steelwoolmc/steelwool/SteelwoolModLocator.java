@@ -89,6 +89,7 @@ public class SteelwoolModLocator extends AbstractJarFileModLocator {
 	@Override
 	public Stream<Path> scanCandidates() {
 		Constants.LOG.info("Steelwool scanning for mods...");
+		// TODO should take excluded into account
 		var excluded = ModDirTransformerDiscoverer.allExcluded();
 		for (var e : excluded) {
 			System.out.println("excluded = " + e);

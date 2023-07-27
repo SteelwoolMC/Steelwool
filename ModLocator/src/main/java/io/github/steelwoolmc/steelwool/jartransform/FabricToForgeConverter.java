@@ -29,10 +29,12 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static io.github.steelwoolmc.steelwool.Constants.LOG;
 
@@ -49,8 +51,6 @@ public class FabricToForgeConverter {
 	 * @return a list of Forge jar paths
 	 */
 	public static List<Path> getConvertedJarPaths(List<ModCandidate> modCandidates, Mappings.SimpleMappingData mappings) {
-		var remapper = new Mappings.SteelwoolRemapper(mappings);
-
 		var modsOutputFolder = FMLPaths.getOrCreateGameRelativePath(Constants.MOD_CACHE_ROOT.resolve("mods"));
 
 		// Delete all existing mod files
@@ -69,6 +69,20 @@ public class FabricToForgeConverter {
 
 		var outputJars = new ArrayList<Path>();
 
+		Map<String, ClassData> classes = new HashMap<>();
+
+		for (var candidate : modCandidates) {
+			if (candidate.isBuiltin()) continue;
+			if (candidate.getId().equals("fabricloader")) continue;
+			try {
+				collectClassHierarchy(classes, candidate.getPaths().get(0));
+			} catch (IOException | URISyntaxException e) {
+				throw new RuntimeException(String.format("Failed to transform mod jar for %s", candidate.getMetadata().getId()), e);
+			}
+		}
+
+		var remapper = new Mappings.SteelwoolRemapper(mappings, classes);
+
 		for (var candidate : modCandidates) {
 			if (candidate.isBuiltin()) continue;
 			// TODO why is this one not marked builtin? does fabric not do that or did we break something
@@ -82,6 +96,65 @@ public class FabricToForgeConverter {
 			}
 		}
 		return outputJars;
+	}
+
+	// FIXME class hierarchy stuff should be refactored into a separate file
+	public static class ClassData {
+		String name;
+		ClassData parent;
+		List<ClassData> interfaces;
+
+		ClassData(String name) {
+			this.name = name;
+			this.parent = null;
+			this.interfaces = new ArrayList<>();
+		}
+
+		boolean doesExtend(String name) {
+			if (this.name.equals(name)) return true;
+			if (this.parent != null && this.parent.doesExtend(name)) return true;
+			return interfaces.stream().anyMatch(c -> c.doesExtend(name));
+		}
+
+		private void getHierarchy(Stream.Builder<String> stream) {
+			stream.add(this.name);
+			if (this.parent != null) this.parent.getHierarchy(stream);
+			this.interfaces.forEach(c -> c.getHierarchy(stream));
+		}
+
+		public Stream<String> getHierarchy() {
+			Stream.Builder<String> stream = Stream.builder();
+			getHierarchy(stream);
+			return stream.build();
+		}
+	}
+
+	private static void collectClassHierarchy(Map<String, ClassData> classes, Path jarPath) throws URISyntaxException, IOException {
+		URI jarUri = new URI("jar:"+jarPath.toUri());
+		try (var fs = FileSystems.newFileSystem(jarUri, Map.of())) {
+			Files.walkFileTree(fs.getPath("/"), new SimpleFileVisitor<>() {
+				@Override
+				public FileVisitResult visitFile(Path oldFile, BasicFileAttributes attrs) throws IOException {
+					var fileString = oldFile.toString();
+					if (shouldSkip(fileString)) return FileVisitResult.SKIP_SUBTREE;
+
+					if (fileString.endsWith(".class")) {
+						var classReader = new ClassReader(Files.readAllBytes(oldFile));
+						var className = classReader.getClassName();
+						var classData = classes.computeIfAbsent(className, ClassData::new);
+						var superName = classReader.getSuperName();
+						classData.parent = classes.computeIfAbsent(superName, ClassData::new);
+						var ifaces = classReader.getInterfaces();
+						for (var iface : ifaces) {
+							var ifaceData = classes.computeIfAbsent(iface, ClassData::new);
+							classData.interfaces.add(ifaceData);
+						}
+					}
+
+					return FileVisitResult.CONTINUE;
+				}
+			});
+		}
 	}
 
 	private static boolean shouldSkip(String path) {
