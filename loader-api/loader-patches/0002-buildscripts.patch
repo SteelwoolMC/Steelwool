@@ -6,10 +6,10 @@ Subject: [PATCH] buildscripts
 
 diff --git a/build.gradle b/build.gradle
 new file mode 100644
-index 0000000000000000000000000000000000000000..509f047971c913a17dff37b4d06ec160d0ec12e4
+index 0000000000000000000000000000000000000000..b224b235461690353a39b7bf0ec55fb9a2ebd1ef
 --- /dev/null
 +++ b/build.gradle
-@@ -0,0 +1,244 @@
+@@ -0,0 +1,236 @@
 +// Largely copied from the original fabric-loader buildscript.
 +// We delete then recreate rather than patching to make rebasing simpler.
 +buildscript {
@@ -27,9 +27,6 @@ index 0000000000000000000000000000000000000000..509f047971c913a17dff37b4d06ec160
 +	id 'com.github.johnrengelman.shadow'
 +	id 'me.modmuss50.remotesign' version "0.4.0"
 +}
-+
-+sourceCompatibility = JavaVersion.VERSION_1_8
-+targetCompatibility = JavaVersion.VERSION_1_8
 +
 +archivesBaseName = "fabric-loader"
 +version = "0.14.21"
@@ -98,6 +95,9 @@ index 0000000000000000000000000000000000000000..509f047971c913a17dff37b4d06ec160
 +
 +	// Unit testing for mod metadata
 +	testImplementation('org.junit.jupiter:junit-jupiter:5.9.2')
++
++	// Steelwool: hooks
++	include project(path: ":loader-api:steelwool-hooks")
 +}
 +
 +processResources {
@@ -204,13 +204,6 @@ index 0000000000000000000000000000000000000000..509f047971c913a17dff37b4d06ec160
 +
 +tasks.withType(JavaCompile).configureEach {
 +	it.options.encoding = "UTF-8"
-+
-+	// The Minecraft launcher currently installs Java 8 for users, so your mod probably wants to target Java 8 too
-+	// JDK 9 introduced a new way of specifying this that will make sure no newer classes or methods are used.
-+	// We'll use that if it's available, but otherwise we'll use the older option.
-+	if (JavaVersion.current().isJava9Compatible()) {
-+		it.options.release = 8
-+	}
 +}
 +
 +javadoc {
@@ -218,7 +211,6 @@ index 0000000000000000000000000000000000000000..509f047971c913a17dff37b4d06ec160
 +		if (file("README.html").exists()) {
 +			overview = "README.html"
 +		}
-+		source = "8"
 +		encoding = 'UTF-8'
 +		charSet = 'UTF-8'
 +		memberLevel = JavadocMemberLevel.PACKAGE
@@ -255,10 +247,17 @@ index 0000000000000000000000000000000000000000..509f047971c913a17dff37b4d06ec160
 +	add("shaded", fatJar)
 +}
 diff --git a/minecraft/build.gradle b/minecraft/build.gradle
-index 552e71512f9e1ffc9451b5eb3133571ae7daa686..8d95e4c1744ed91a0fbcbdfe33166a04704e51bf 100644
+index 552e71512f9e1ffc9451b5eb3133571ae7daa686..0fd2a6385525979f184104d26298a3d807003650 100644
 --- a/minecraft/build.gradle
 +++ b/minecraft/build.gradle
-@@ -9,7 +9,7 @@ repositories {
+@@ -1,6 +1,3 @@
+-sourceCompatibility = JavaVersion.VERSION_1_8
+-targetCompatibility = JavaVersion.VERSION_1_8
+-
+ repositories {
+ 	maven {
+ 		name = 'Mojang'
+@@ -9,7 +6,7 @@ repositories {
  }
  
  dependencies {
@@ -267,3 +266,14 @@ index 552e71512f9e1ffc9451b5eb3133571ae7daa686..8d95e4c1744ed91a0fbcbdfe33166a04
  
  	// log4j wrapper
  	compileOnly 'org.apache.logging.log4j:log4j-api:2.8.1'
+@@ -31,10 +28,6 @@ sourceSets {
+ 
+ tasks.withType(JavaCompile).configureEach {
+ 	it.options.encoding = "UTF-8"
+-
+-	if (JavaVersion.current().isJava9Compatible()) {
+-		it.options.release = 8
+-	}
+ }
+ 
+ jar {
