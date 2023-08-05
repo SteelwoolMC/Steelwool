@@ -9,8 +9,7 @@ modLoader="javafml" #mandatory
 loaderVersion="[47,)" #mandatory This is typically bumped every Minecraft version by Forge. See our download page for lists of versions.
 # The license for you mod. This is mandatory metadata and allows for easier comprehension of your redistributive properties.
 # Review your options at https://choosealicense.com/. All rights reserved is the default copyright stance, and is thus the default here.
-# FIXME choose a license!
-license="All rights reserved"
+license="MIT"
 # A URL to refer people to when problems occur with this mod
 #issueTrackerURL="https://change.me.to.your.issue.tracker.example.invalid/" #optional
 # A list of mods - how many allowed here is determined by the individual mod loader
@@ -20,16 +19,19 @@ modId="steelwool" #mandatory
 # The version number of the mod - there's a few well known ${} variables useable here or just hardcode it
 # ${file.jarVersion} will substitute the value of the Implementation-Version as read from the mod's JAR file metadata
 # see the associated build.gradle script for how to populate this completely automatically during a build
+# TODO we should actually set this once we have a versioning system
+#      (we don't set `Implementation-Version` so this currently just sets it as 0.0 or similar)
 version="${file.jarVersion}" #mandatory
  # A display name for the mod
 displayName="Steelwool" #mandatory
 # A URL to query for updates for this mod. See the JSON update specification https://mcforge.readthedocs.io/en/latest/gettingstarted/autoupdate/
 #updateJSONURL="https://change.me.example.invalid/updates.json" #optional
 # A URL for the "homepage" for this mod, displayed in the mod UI
-#displayURL="https://change.me.to.your.mods.homepage.example.invalid/" #optional
+displayURL="https://github.com/SteelwoolMC/Steelwool" #optional
 # A file name (in the root of the mod JAR) containing a logo for display
-# TODO mod icon
-logoFile="steelwool.png" #optional
+logoFile="icon.png" #optional
+# So that we don't need to upscale a pixel art logo
+logoBlur=false
 # A text field displayed in the mod UI
 # credits="Thanks for this example mod goes to Java" #optional
 # A text field displayed in the mod UI
