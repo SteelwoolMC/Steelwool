@@ -92,6 +92,11 @@ shadowJar {
 		into "META-INF/"
 	}
 
+	// Include the mods.toml in the main jar so tools that read the jar (launchers etc) will get the correct metadata
+	from("../Mod/src/main/resources/META-INF/mods.toml") {
+		into "META-INF/"
+	}
+
 	configurations = [project.configurations.shaded]
 
 	archiveClassifier = ''
